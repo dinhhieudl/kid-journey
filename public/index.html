@@ -2,7 +2,10 @@
 <html lang="vi">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, maximum-scale=1">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="theme-color" content="#6c5ce7">
 <title>🌱 Kid Journey</title>
 <style>
 *{margin:0;padding:0;box-sizing:border-box}
@@ -167,22 +170,142 @@ textarea{resize:vertical;min-height:80px}
 ::-webkit-scrollbar-track{background:transparent}
 ::-webkit-scrollbar-thumb{background:var(--border);border-radius:3px}
 
-/* Mobile */
-.menu-toggle{display:none;position:fixed;top:12px;left:12px;z-index:150;width:38px;height:38px;border-radius:10px;background:var(--primary);color:#fff;border:none;font-size:1.1rem;cursor:pointer}
+/* ===== MOBILE-FIRST REDESIGN ===== */
+
+/* Touch targets minimum 44px */
+@media(hover:none){
+  .btn{min-height:44px;padding:10px 20px}
+  .btn-icon{width:44px;height:44px}
+  .kid-chip{min-height:44px;padding:10px 18px}
+  .mood-btn{min-width:44px;min-height:44px}
+  .sidebar nav a{min-height:44px}
+}
+
+/* Mobile: sidebar as overlay */
+.menu-toggle{display:none;position:fixed;top:12px;left:12px;z-index:150;width:42px;height:42px;border-radius:12px;background:var(--primary);color:#fff;border:none;font-size:1.2rem;cursor:pointer;box-shadow:0 2px 12px rgba(108,92,231,.3)}
+.sidebar-overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,.4);z-index:99}
+
+/* Mobile: bottom nav */
+.bottom-nav{display:none;position:fixed;bottom:0;left:0;right:0;background:var(--card);border-top:1px solid var(--border);z-index:100;padding:6px 4px env(safe-area-inset-bottom,8px);box-shadow:0 -2px 12px rgba(0,0,0,.06)}
+.bottom-nav-inner{display:flex;justify-content:space-around;align-items:center}
+.bottom-nav a{display:flex;flex-direction:column;align-items:center;gap:2px;text-decoration:none;color:var(--text2);font-size:.62rem;font-weight:600;padding:4px 2px;border-radius:10px;transition:all .2s;min-width:44px}
+.bottom-nav a .bicon{font-size:1.2rem;line-height:1}
+.bottom-nav a.active{color:var(--primary)}
+
 @media(max-width:768px){
-  .sidebar{transform:translateX(-100%);transition:transform .3s}
+  :root{--sidebar-w:280px}
+  html{font-size:14px}
+
+  /* Sidebar overlay */
+  .sidebar{transform:translateX(-100%);transition:transform .3s cubic-bezier(.4,0,.2,1);width:var(--sidebar-w)}
   .sidebar.open{transform:translateX(0)}
-  .main{margin-left:0}
+  .sidebar-overlay.show{display:block}
   .menu-toggle{display:flex;align-items:center;justify-content:center}
-  .content{padding:16px}
-  .topbar{padding:12px 16px}
-  .kanban{grid-template-columns:1fr}
+  .bottom-nav{display:block}
+
+  /* Main area */
+  .main{margin-left:0;padding-bottom:72px}
+  .topbar{padding:12px 16px;padding-left:56px;gap:8px;flex-wrap:wrap}
+  .topbar h2{font-size:1rem}
+  .content{padding:14px 12px}
+
+  /* Kid selector horizontal scroll */
+  .kid-selector{flex-wrap:nowrap;overflow-x:auto;-webkit-overflow-scrolling:touch;gap:6px;padding:2px;scrollbar-width:none}
+  .kid-selector::-webkit-scrollbar{display:none}
+  .kid-chip{white-space:nowrap;flex-shrink:0;font-size:.8rem;padding:7px 14px}
+
+  /* Stats: 2 cols */
+  .stats{grid-template-columns:repeat(2,1fr);gap:10px}
+  .stat-card{padding:14px 12px}
+  .stat-card .num{font-size:1.5rem}
+
+  /* Grids: single col */
+  .grid-2,.grid-3{grid-template-columns:1fr;gap:14px}
+
+  /* Cards */
+  .card-body{padding:16px 14px}
+
+  /* Diary */
+  .diary-entry{padding:14px}
+  .diary-header{flex-wrap:wrap;gap:6px}
+  .diary-mood{font-size:1.2rem}
+  .diary-title{font-size:.88rem}
+  .diary-body{font-size:.85rem}
+
+  /* Kanban: horizontal scroll */
+  .kanban{display:flex;overflow-x:auto;-webkit-overflow-scrolling:touch;gap:12px;padding-bottom:8px;scrollbar-width:none}
+  .kanban::-webkit-scrollbar{display:none}
+  .kanban-col{min-width:280px;flex-shrink:0}
+
+  /* Timeline */
+  .timeline{padding-left:24px}
+
+  /* Photo grid */
+  .photo-grid{grid-template-columns:repeat(2,1fr);gap:8px}
+  .photo-card img{height:120px}
+
+  /* Modal: full screen on mobile */
+  .modal-overlay{align-items:flex-end}
+  .modal{width:100%;max-width:none;max-height:90vh;border-radius:18px 18px 0 0;animation:slideUp .3s ease}
+  @keyframes slideUp{from{transform:translateY(100%)}to{transform:translateY(0)}}
+  .modal-header{padding:16px 16px 0}
+  .modal-body{padding:16px}
+  .modal-actions{padding:0 16px 16px}
+  .modal::before{content:'';display:block;width:36px;height:4px;background:var(--border);border-radius:2px;margin:8px auto 0}
+
+  /* Form rows stack */
+  .form-row{grid-template-columns:1fr;gap:10px}
+  input,textarea,select{font-size:16px;padding:12px 14px}
+
+  /* Profile */
+  .profile-hero{padding:24px 16px}
+  .profile-avatar{width:64px;height:64px;font-size:1.8rem}
+  .profile-name{font-size:1.2rem}
+  .info-grid{grid-template-columns:1fr 1fr;gap:8px}
+  .info-item{padding:10px 12px}
+
+  /* Montessori activity cards */
+  .montessori-act{flex-direction:column;gap:6px}
+
+  /* Growth chart */
+  .chart-container{height:180px}
+  .chart-bar{width:18px}
+
+  /* Toast: bottom center */
+  .toast{left:50%;right:auto;transform:translateX(-50%) translateY(20px);bottom:80px}
+  .toast.show{transform:translateX(-50%) translateY(0)}
+
+  /* Buttons */
+  .btn{font-size:.82rem;padding:9px 16px}
+  .btn-sm{padding:7px 12px;font-size:.75rem}
+}
+
+/* Small phones */
+@media(max-width:380px){
+  .stats{grid-template-columns:1fr 1fr;gap:8px}
+  .stat-card .num{font-size:1.3rem}
+  .stat-card .label{font-size:.7rem}
+  .photo-grid{grid-template-columns:repeat(2,1fr)}
+  .info-grid{grid-template-columns:1fr}
+}
+
+/* Landscape phone */
+@media(max-height:500px) and (orientation:landscape){
+  .modal{max-height:95vh}
+  .modal::before{display:none}
+}
+
+/* Safe area for notch devices */
+@supports(padding:max(0px)){
+  .bottom-nav{padding-bottom:max(8px,env(safe-area-inset-bottom))}
+  .topbar{padding-top:max(12px,env(safe-area-inset-top))}
 }
 </style>
 </head>
 <body>
 
-<button class="menu-toggle" onclick="document.querySelector('.sidebar').classList.toggle('open')">☰</button>
+<button class="menu-toggle" onclick="toggleSidebar()">☰</button>
+<div class="sidebar-overlay" onclick="toggleSidebar()"></div>
 
 <aside class="sidebar">
   <div class="sidebar-header">
@@ -223,6 +346,17 @@ textarea{resize:vertical;min-height:80px}
 </div>
 
 <div class="toast" id="toast"></div>
+
+<!-- Bottom Nav (mobile) -->
+<nav class="bottom-nav">
+  <div class="bottom-nav-inner">
+    <a href="#" data-page="dashboard" class="active" onclick="navTo('dashboard')"><span class="bicon">📊</span>Tổng quan</a>
+    <a href="#" data-page="diary" onclick="navTo('diary')"><span class="bicon">📝</span>Nhật ký</a>
+    <a href="#" data-page="plans" onclick="navTo('plans')"><span class="bicon">🎯</span>Kế hoạch</a>
+    <a href="#" data-page="montessori" onclick="navTo('montessori')"><span class="bicon">🧬</span>Montessori</a>
+    <a href="#" data-page="profile" onclick="navTo('profile')"><span class="bicon">👤</span>Hồ sơ</a>
+  </div>
+</nav>
 
 <script>
 const MOODS = [
@@ -277,16 +411,40 @@ function openModal(title, bodyHtml, actions) {
 function closeModal() { document.getElementById('modal').classList.remove('show'); }
 
 // Navigation
-document.querySelectorAll('.sidebar nav a').forEach(a => {
-  a.addEventListener('click', e => {
-    e.preventDefault();
-    document.querySelectorAll('.sidebar nav a').forEach(x=>x.classList.remove('active'));
-    a.classList.add('active');
-    state.page = a.dataset.page;
-    render();
-    document.querySelector('.sidebar').classList.remove('open');
+function toggleSidebar() {
+  document.querySelector('.sidebar').classList.toggle('open');
+  document.querySelector('.sidebar-overlay').classList.toggle('show');
+}
+
+function navTo(page) {
+  state.page = page;
+  // Update sidebar active
+  document.querySelectorAll('.sidebar nav a').forEach(x => {
+    x.classList.toggle('active', x.dataset.page === page);
   });
+  // Update bottom nav active
+  document.querySelectorAll('.bottom-nav a').forEach(x => {
+    x.classList.toggle('active', x.dataset.page === page);
+  });
+  render();
+  document.querySelector('.sidebar').classList.remove('open');
+  document.querySelector('.sidebar-overlay').classList.remove('show');
+  window.scrollTo({top: 0, behavior: 'smooth'});
+}
+
+document.querySelectorAll('.sidebar nav a').forEach(a => {
+  a.addEventListener('click', e => { e.preventDefault(); navTo(a.dataset.page); });
 });
+
+// Swipe to open/close sidebar
+let touchStartX = 0;
+document.addEventListener('touchstart', e => { touchStartX = e.touches[0].clientX; }, {passive:true});
+document.addEventListener('touchend', e => {
+  const dx = e.changedTouches[0].clientX - touchStartX;
+  const sidebar = document.querySelector('.sidebar');
+  if (touchStartX < 30 && dx > 60) { sidebar.classList.add('open'); document.querySelector('.sidebar-overlay').classList.add('show'); }
+  if (sidebar.classList.contains('open') && dx < -60) { toggleSidebar(); }
+}, {passive:true});
 
 // Kid selector
 async function loadKids() {
@@ -315,6 +473,8 @@ function render() {
     milestones:'⭐ Cột mốc', growth:'📏 Phát triển', montessori:'🧬 Montessori', photos:'📷 Album ảnh', profile:'👤 Hồ sơ bé'
   };
   document.getElementById('pageTitle').textContent = titles[state.page] || '';
+  document.querySelectorAll('.sidebar nav a').forEach(x => x.classList.toggle('active', x.dataset.page === state.page));
+  document.querySelectorAll('.bottom-nav a').forEach(x => x.classList.toggle('active', x.dataset.page === state.page));
   const fn = {
     dashboard:renderDashboard, diary:renderDiary, plans:renderPlans,
     milestones:renderMilestones, growth:renderGrowth, montessori:renderMontessori, photos:renderPhotos, profile:renderProfile
