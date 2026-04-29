@@ -1,0 +1,824 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>🌱 Kid Journey</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+:root{
+  --bg:#faf8f5;--card:#fff;--primary:#6c5ce7;--primary-light:#a29bfe;
+  --secondary:#00b894;--accent:#fdcb6e;--danger:#e17055;
+  --text:#2d3436;--text2:#636e72;--border:#e8e4df;
+  --shadow:0 2px 12px rgba(0,0,0,.06);--radius:14px;
+  --sidebar-w:260px;
+}
+html{font-size:15px;scroll-behavior:smooth}
+body{font-family:'Inter',system-ui,-apple-system,sans-serif;background:var(--bg);color:var(--text);min-height:100vh;display:flex}
+
+/* Sidebar */
+.sidebar{width:var(--sidebar-w);background:linear-gradient(170deg,#2d1b69 0%,#44318d 50%,#6c5ce7 100%);color:#fff;padding:0;position:fixed;height:100vh;display:flex;flex-direction:column;z-index:100;overflow:hidden}
+.sidebar-header{padding:24px 20px 20px;text-align:center;border-bottom:1px solid rgba(255,255,255,.1)}
+.sidebar-header h1{font-size:1.3rem;font-weight:800;letter-spacing:-.5px}
+.sidebar-header p{font-size:.75rem;opacity:.6;margin-top:4px}
+.sidebar nav{flex:1;overflow-y:auto;padding:12px 10px}
+.sidebar nav a{display:flex;align-items:center;gap:12px;padding:11px 14px;color:rgba(255,255,255,.7);text-decoration:none;border-radius:10px;font-size:.9rem;font-weight:500;transition:all .2s;margin-bottom:2px}
+.sidebar nav a:hover{background:rgba(255,255,255,.1);color:#fff}
+.sidebar nav a.active{background:rgba(255,255,255,.18);color:#fff;font-weight:600}
+.sidebar nav a .icon{font-size:1.15rem;width:24px;text-align:center}
+.sidebar-footer{padding:16px;border-top:1px solid rgba(255,255,255,.1);text-align:center;font-size:.7rem;opacity:.4}
+
+/* Main */
+.main{margin-left:var(--sidebar-w);flex:1;min-height:100vh;padding:0}
+.topbar{background:var(--card);border-bottom:1px solid var(--border);padding:16px 32px;display:flex;align-items:center;justify-content:space-between;position:sticky;top:0;z-index:50}
+.topbar h2{font-size:1.2rem;font-weight:700;display:flex;align-items:center;gap:10px}
+.content{padding:28px 32px}
+
+/* Kid selector */
+.kid-selector{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.kid-chip{padding:8px 18px;border-radius:24px;border:2px solid var(--border);background:var(--card);cursor:pointer;font-size:.85rem;font-weight:600;transition:all .2s;display:flex;align-items:center;gap:6px}
+.kid-chip:hover{border-color:var(--primary-light)}
+.kid-chip.active{background:var(--primary);color:#fff;border-color:var(--primary)}
+.kid-chip.add{border-style:dashed;color:var(--text2)}
+
+/* Cards */
+.card{background:var(--card);border-radius:var(--radius);box-shadow:var(--shadow);border:1px solid var(--border);overflow:hidden}
+.card-body{padding:20px 24px}
+
+/* Stats grid */
+.stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:16px;margin-bottom:24px}
+.stat-card{background:var(--card);border-radius:var(--radius);padding:20px;box-shadow:var(--shadow);border:1px solid var(--border);text-align:center}
+.stat-card .num{font-size:2rem;font-weight:800;background:linear-gradient(135deg,var(--primary),var(--primary-light));-webkit-background-clip:text;-webkit-text-fill-color:transparent}
+.stat-card .label{font-size:.78rem;color:var(--text2);margin-top:4px;font-weight:500}
+
+/* Grid layouts */
+.grid-2{display:grid;grid-template-columns:1fr 1fr;gap:20px}
+.grid-3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:20px}
+@media(max-width:900px){.grid-2,.grid-3{grid-template-columns:1fr}}
+
+/* Buttons */
+.btn{display:inline-flex;align-items:center;gap:6px;padding:9px 18px;border-radius:10px;border:none;font-size:.85rem;font-weight:600;cursor:pointer;transition:all .15s}
+.btn:hover{transform:translateY(-1px);box-shadow:0 4px 12px rgba(0,0,0,.1)}
+.btn-primary{background:var(--primary);color:#fff}
+.btn-secondary{background:var(--secondary);color:#fff}
+.btn-danger{background:var(--danger);color:#fff}
+.btn-ghost{background:transparent;color:var(--text2);border:1.5px solid var(--border)}
+.btn-ghost:hover{border-color:var(--primary);color:var(--primary)}
+.btn-sm{padding:6px 12px;font-size:.78rem;border-radius:8px}
+.btn-icon{width:34px;height:34px;padding:0;display:inline-flex;align-items:center;justify-content:center;border-radius:8px;border:none;background:transparent;cursor:pointer;font-size:1rem;transition:all .15s}
+.btn-icon:hover{background:var(--bg)}
+
+/* Forms */
+.form-group{margin-bottom:16px}
+.form-group label{display:block;font-size:.8rem;font-weight:600;color:var(--text2);margin-bottom:6px}
+.form-row{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+input,textarea,select{width:100%;padding:10px 14px;border:1.5px solid var(--border);border-radius:10px;font-size:.9rem;font-family:inherit;background:var(--bg);transition:border-color .2s}
+input:focus,textarea:focus,select:focus{outline:none;border-color:var(--primary)}
+textarea{resize:vertical;min-height:80px}
+
+/* Modal */
+.modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,.4);backdrop-filter:blur(4px);z-index:200;display:none;align-items:center;justify-content:center}
+.modal-overlay.show{display:flex}
+.modal{background:var(--card);border-radius:18px;width:94%;max-width:520px;max-height:85vh;overflow-y:auto;box-shadow:0 20px 60px rgba(0,0,0,.2)}
+.modal-header{padding:20px 24px 0;display:flex;align-items:center;justify-content:space-between}
+.modal-header h3{font-size:1.1rem;font-weight:700}
+.modal-body{padding:20px 24px 24px}
+.modal-actions{display:flex;gap:10px;justify-content:flex-end;padding:0 24px 20px}
+
+/* Tabs */
+.tabs{display:flex;gap:4px;background:var(--bg);border-radius:10px;padding:4px;margin-bottom:20px}
+.tab{flex:1;padding:8px;text-align:center;border-radius:8px;font-size:.82rem;font-weight:600;cursor:pointer;color:var(--text2);transition:all .2s}
+.tab.active{background:var(--card);color:var(--primary);box-shadow:0 1px 4px rgba(0,0,0,.08)}
+
+/* Diary entry */
+.diary-entry{background:var(--card);border-radius:var(--radius);padding:20px;box-shadow:var(--shadow);border:1px solid var(--border);margin-bottom:14px;transition:all .2s}
+.diary-entry:hover{box-shadow:0 4px 20px rgba(0,0,0,.08)}
+.diary-header{display:flex;align-items:center;gap:10px;margin-bottom:10px}
+.diary-date{font-size:.78rem;color:var(--text2);font-weight:500}
+.diary-mood{font-size:1.4rem}
+.diary-title{font-weight:700;font-size:.95rem}
+.diary-body{font-size:.9rem;line-height:1.7;color:var(--text2);white-space:pre-wrap}
+.diary-tags{display:flex;gap:6px;margin-top:10px;flex-wrap:wrap}
+.tag{background:var(--bg);color:var(--primary);padding:3px 10px;border-radius:20px;font-size:.72rem;font-weight:600}
+.diary-actions{display:flex;gap:4px;margin-left:auto}
+
+/* Plan kanban */
+.kanban{display:grid;grid-template-columns:1fr 1fr 1fr;gap:16px}
+@media(max-width:900px){.kanban{grid-template-columns:1fr}}
+.kanban-col{background:var(--bg);border-radius:var(--radius);padding:16px;min-height:200px}
+.kanban-col h4{font-size:.85rem;font-weight:700;margin-bottom:12px;display:flex;align-items:center;gap:6px}
+.plan-card{background:var(--card);border-radius:10px;padding:14px;margin-bottom:10px;box-shadow:0 1px 4px rgba(0,0,0,.05);border:1px solid var(--border);cursor:pointer;transition:all .15s}
+.plan-card:hover{box-shadow:0 4px 12px rgba(0,0,0,.08)}
+.plan-card h5{font-size:.88rem;font-weight:600;margin-bottom:4px}
+.plan-card p{font-size:.78rem;color:var(--text2);line-height:1.5}
+.plan-meta{display:flex;gap:8px;margin-top:8px;align-items:center}
+.priority{font-size:.68rem;font-weight:700;padding:2px 8px;border-radius:6px;text-transform:uppercase}
+.priority-high{background:#ffeaea;color:#e17055}
+.priority-medium{background:#fff3e0;color:#e17055}
+.priority-low{background:#e8f8f5;color:#00b894}
+
+/* Timeline */
+.timeline{position:relative;padding-left:28px}
+.timeline::before{content:'';position:absolute;left:8px;top:0;bottom:0;width:2px;background:var(--border)}
+.timeline-item{position:relative;margin-bottom:20px}
+.timeline-dot{position:absolute;left:-24px;top:4px;width:16px;height:16px;border-radius:50%;background:var(--primary);border:3px solid var(--bg)}
+.timeline-item .card{padding:16px 20px}
+.timeline-item .date{font-size:.75rem;color:var(--text2);font-weight:500}
+
+/* Growth chart */
+.chart-container{position:relative;height:220px;margin:16px 0}
+.chart-bar{position:absolute;bottom:30px;width:24px;border-radius:6px 6px 0 0;transition:height .4s}
+.chart-label{position:absolute;bottom:0;font-size:.65rem;color:var(--text2);transform:translateX(-50%)}
+.chart-value{position:absolute;font-size:.65rem;color:var(--primary);font-weight:600;transform:translateX(-50%)}
+
+/* Photo grid */
+.photo-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:12px}
+.photo-card{border-radius:12px;overflow:hidden;box-shadow:var(--shadow);border:1px solid var(--border);cursor:pointer;transition:transform .2s;position:relative}
+.photo-card:hover{transform:scale(1.03)}
+.photo-card img{width:100%;height:140px;object-fit:cover}
+.photo-card .caption{padding:8px 10px;font-size:.75rem;color:var(--text2);background:var(--card)}
+
+/* Profile card */
+.profile-hero{background:linear-gradient(135deg,var(--primary) 0%,#a29bfe 100%);border-radius:var(--radius);padding:32px;color:#fff;text-align:center;margin-bottom:20px}
+.profile-avatar{width:80px;height:80px;border-radius:50%;background:rgba(255,255,255,.2);margin:0 auto 12px;display:flex;align-items:center;justify-content:center;font-size:2.2rem;border:3px solid rgba(255,255,255,.3)}
+.profile-name{font-size:1.4rem;font-weight:800}
+.profile-sub{opacity:.8;font-size:.85rem;margin-top:4px}
+.info-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:12px}
+.info-item{background:var(--bg);border-radius:10px;padding:14px}
+.info-item .label{font-size:.72rem;color:var(--text2);font-weight:600;text-transform:uppercase;letter-spacing:.5px}
+.info-item .value{font-size:.95rem;font-weight:600;margin-top:4px}
+
+/* Empty state */
+.empty{text-align:center;padding:48px 20px;color:var(--text2)}
+.empty .icon{font-size:3rem;margin-bottom:12px}
+.empty p{font-size:.9rem;margin-bottom:16px}
+
+/* Toast */
+.toast{position:fixed;bottom:24px;right:24px;background:var(--text);color:#fff;padding:12px 20px;border-radius:12px;font-size:.85rem;z-index:300;opacity:0;transform:translateY(20px);transition:all .3s;pointer-events:none}
+.toast.show{opacity:1;transform:translateY(0)}
+
+/* Mood picker */
+.mood-picker{display:flex;gap:6px;flex-wrap:wrap}
+.mood-btn{font-size:1.4rem;padding:6px 8px;border-radius:8px;border:2px solid transparent;cursor:pointer;background:transparent;transition:all .15s}
+.mood-btn:hover,.mood-btn.selected{border-color:var(--primary);background:rgba(108,92,231,.08)}
+
+/* Scrollbar */
+::-webkit-scrollbar{width:5px}
+::-webkit-scrollbar-track{background:transparent}
+::-webkit-scrollbar-thumb{background:var(--border);border-radius:3px}
+
+/* Mobile */
+.menu-toggle{display:none;position:fixed;top:12px;left:12px;z-index:150;width:38px;height:38px;border-radius:10px;background:var(--primary);color:#fff;border:none;font-size:1.1rem;cursor:pointer}
+@media(max-width:768px){
+  .sidebar{transform:translateX(-100%);transition:transform .3s}
+  .sidebar.open{transform:translateX(0)}
+  .main{margin-left:0}
+  .menu-toggle{display:flex;align-items:center;justify-content:center}
+  .content{padding:16px}
+  .topbar{padding:12px 16px}
+  .kanban{grid-template-columns:1fr}
+}
+</style>
+</head>
+<body>
+
+<button class="menu-toggle" onclick="document.querySelector('.sidebar').classList.toggle('open')">☰</button>
+
+<aside class="sidebar">
+  <div class="sidebar-header">
+    <h1>🌱 Kid Journey</h1>
+    <p>Nhật ký cho bé yêu</p>
+  </div>
+  <nav>
+    <a href="#" data-page="dashboard" class="active"><span class="icon">📊</span> Tổng quan</a>
+    <a href="#" data-page="diary"><span class="icon">📝</span> Nhật ký</a>
+    <a href="#" data-page="plans"><span class="icon">🎯</span> Kế hoạch</a>
+    <a href="#" data-page="milestones"><span class="icon">⭐</span> Cột mốc</a>
+    <a href="#" data-page="growth"><span class="icon">📏</span> Phát triển</a>
+    <a href="#" data-page="photos"><span class="icon">📷</span> Album ảnh</a>
+    <a href="#" data-page="profile"><span class="icon">👤</span> Hồ sơ bé</a>
+  </nav>
+  <div class="sidebar-footer">Kid Journey v1.0 · Made with ❤️</div>
+</aside>
+
+<main class="main">
+  <div class="topbar">
+    <h2 id="pageTitle">📊 Tổng quan</h2>
+    <div class="kid-selector" id="kidSelector"></div>
+  </div>
+  <div class="content" id="content"></div>
+</main>
+
+<!-- Modal -->
+<div class="modal-overlay" id="modal">
+  <div class="modal">
+    <div class="modal-header">
+      <h3 id="modalTitle"></h3>
+      <button class="btn-icon" onclick="closeModal()">✕</button>
+    </div>
+    <div class="modal-body" id="modalBody"></div>
+    <div class="modal-actions" id="modalActions"></div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+const MOODS = [
+  {v:'happy',e:'😊',l:'Vui vẻ'},{v:'excited',e:'🤩',l:'Phấn khích'},
+  {v:'love',e:'🥰',l:'Yêu thương'},{v:'calm',e:'😌',l:'Bình yên'},
+  {v:'sad',e:'😢',l:'Buồn'},{v:'sick',e:'🤒',l:'Ốm'},
+  {v:'angry',e:'😠',l:'Giận'},{v:'sleepy',e:'😴',l:'Buồn ngủ'}
+];
+const CATEGORIES = [
+  {v:'education',e:'📚',l:'Giáo dục'},{v:'health',e:'🏥',l:'Sức khỏe'},
+  {v:'sport',e:'⚽',l'Thể thao'},{v:'art',e:'🎨',l'Nghệ thuật'},
+  {v:'music',e:'🎵',l'Âm nhạc'},{v:'travel',e:'✈️',l'Du lịch'},
+  {v:'social',e:'👫',l'Xã hội'},{v:'life',e:'🏡',l'Đời sống'},
+  {v:'skill',e:'💡',l'Kỹ năng'},{v:'other',e:'📌',l'Khác'}
+];
+const PLAN_STATUSES = [
+  {v:'planned',l:'📋 Dự kiến',color:'#6c5ce7'},
+  {v:'in_progress',l:'🔄 Đang làm',color:'#fdcb6e'},
+  {v:'done',l:'✅ Hoàn thành',color:'#00b894'}
+];
+const MILESTONE_CATS = [
+  {v:'first',e:'👣',l:'Lần đầu'},{v:'physical',e:'🏃',l'Thể chất'},
+  {v:'mental',e:'🧠',l'Trí tuệ'},{v:'social',e:'💬',l'Xã hội'},
+  {v:'creative',e:'🎨',l'Sáng tạo'},{v:'academic',e:'📖',l'Học tập'},
+  {v:'special',e:'🌟',l'Đặc biệt'}
+];
+
+let state = { kids:[], selectedKid:null, page:'dashboard' };
+
+// API
+async function api(path, opts={}) {
+  const o = { headers:{'Content-Type':'application/json'}, ...opts };
+  if (o.body && typeof o.body === 'object') o.body = JSON.stringify(o.body);
+  const r = await fetch('/api'+path, o);
+  return r.json();
+}
+
+// Toast
+function toast(msg) {
+  const t = document.getElementById('toast');
+  t.textContent = msg; t.classList.add('show');
+  setTimeout(()=>t.classList.remove('show'), 2500);
+}
+
+// Modal
+function openModal(title, bodyHtml, actions) {
+  document.getElementById('modalTitle').textContent = title;
+  document.getElementById('modalBody').innerHTML = bodyHtml;
+  document.getElementById('modalActions').innerHTML = actions || '';
+  document.getElementById('modal').classList.add('show');
+}
+function closeModal() { document.getElementById('modal').classList.remove('show'); }
+
+// Navigation
+document.querySelectorAll('.sidebar nav a').forEach(a => {
+  a.addEventListener('click', e => {
+    e.preventDefault();
+    document.querySelectorAll('.sidebar nav a').forEach(x=>x.classList.remove('active'));
+    a.classList.add('active');
+    state.page = a.dataset.page;
+    render();
+    document.querySelector('.sidebar').classList.remove('open');
+  });
+});
+
+// Kid selector
+async function loadKids() {
+  state.kids = await api('/kids');
+  if (!state.selectedKid && state.kids.length) state.selectedKid = state.kids[0].id;
+  renderKidSelector();
+}
+
+function renderKidSelector() {
+  const el = document.getElementById('kidSelector');
+  el.innerHTML = state.kids.map(k =>
+    `<div class="kid-chip ${k.id===state.selectedKid?'active':''}" onclick="selectKid(${k.id})">${k.avatar||'👶'} ${k.nickname||k.name}</div>`
+  ).join('') + `<div class="kid-chip add" onclick="showKidForm()">+ Thêm bé</div>`;
+}
+
+function selectKid(id) {
+  state.selectedKid = id;
+  renderKidSelector();
+  render();
+}
+
+// Render router
+function render() {
+  const titles = {
+    dashboard:'📊 Tổng quan', diary:'📝 Nhật ký', plans:'🎯 Kế hoạch',
+    milestones:'⭐ Cột mốc', growth:'📏 Phát triển', photos:'📷 Album ảnh', profile:'👤 Hồ sơ bé'
+  };
+  document.getElementById('pageTitle').textContent = titles[state.page] || '';
+  const fn = {
+    dashboard:renderDashboard, diary:renderDiary, plans:renderPlans,
+    milestones:renderMilestones, growth:renderGrowth, photos:renderPhotos, profile:renderProfile
+  };
+  if (fn[state.page]) fn[state.page]();
+}
+
+// ============ DASHBOARD ============
+async function renderDashboard() {
+  const [kids, stats] = await Promise.all([api('/kids'), api('/stats')]);
+  const c = document.getElementById('content');
+  c.innerHTML = `
+    <div class="stats">
+      <div class="stat-card"><div class="num">${stats.kidCount}</div><div class="label">Bé yêu</div></div>
+      <div class="stat-card"><div class="num">${stats.diaryCount}</div><div class="label">Nhật ký</div></div>
+      <div class="stat-card"><div class="num">${stats.planCount}</div><div class="label">Kế hoạch</div></div>
+      <div class="stat-card"><div class="num">${stats.milestoneCount}</div><div class="label">Cột mốc</div></div>
+    </div>
+    <div class="grid-2">
+      <div class="card"><div class="card-body">
+        <h4 style="margin-bottom:14px">📝 Nhật ký gần đây</h4>
+        ${stats.recentDiary.length ? stats.recentDiary.map(d=>`
+          <div style="padding:10px 0;border-bottom:1px solid var(--border)">
+            <div style="display:flex;align-items:center;gap:8px">
+              <span style="font-size:1.2rem">${(MOODS.find(m=>m.v===d.mood)||MOODS[0]).e}</span>
+              <strong style="font-size:.85rem">${d.title||'Không tiêu đề'}</strong>
+              <span style="font-size:.72rem;color:var(--text2);margin-left:auto">${d.date}</span>
+            </div>
+            <div style="font-size:.8rem;color:var(--text2);margin-top:4px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${d.content}</div>
+          </div>
+        `).join('') : '<div class="empty"><p>Chưa có nhật ký nào</p></div>'}
+      </div></div>
+      <div class="card"><div class="card-body">
+        <h4 style="margin-bottom:14px">🎯 Kế hoạch sắp tới</h4>
+        ${stats.upcomingPlans.length ? stats.upcomingPlans.map(p=>`
+          <div style="padding:10px 0;border-bottom:1px solid var(--border)">
+            <div style="display:flex;align-items:center;gap:8px">
+              <span style="font-size:.85rem;font-weight:600">${p.title}</span>
+              <span class="priority priority-${p.priority}" style="margin-left:auto">${p.priority}</span>
+            </div>
+            <div style="font-size:.75rem;color:var(--text2);margin-top:2px">📅 ${p.target_date||'Chưa đặt'} · ${(CATEGORIES.find(c=>c.v===p.category)||CATEGORIES[9]).e} ${(CATEGORIES.find(c=>c.v===p.category)||CATEGORIES[9]).l}</div>
+          </div>
+        `).join('') : '<div class="empty"><p>Chưa có kế hoạch nào</p></div>'}
+      </div></div>
+    </div>
+  `;
+}
+
+// ============ DIARY ============
+async function renderDiary() {
+  if (!state.selectedKid) return renderNoKid();
+  const entries = await api(`/kids/${state.selectedKid}/diary`);
+  const c = document.getElementById('content');
+  c.innerHTML = `
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px">
+      <div></div>
+      <button class="btn btn-primary" onclick="showDiaryForm()">✏️ Viết nhật ký</button>
+    </div>
+    ${entries.length ? entries.map(d=>`
+      <div class="diary-entry">
+        <div class="diary-header">
+          <span class="diary-mood">${(MOODS.find(m=>m.v===d.mood)||MOODS[0]).e}</span>
+          <span class="diary-date">${d.date}</span>
+          ${d.title ? `<span class="diary-title">${esc(d.title)}</span>` : ''}
+          <div class="diary-actions">
+            <button class="btn-icon" onclick="showDiaryForm(${d.id})" title="Sửa">✏️</button>
+            <button class="btn-icon" onclick="deleteDiary(${d.id})" title="Xóa">🗑</button>
+          </div>
+        </div>
+        <div class="diary-body">${esc(d.content)}</div>
+        ${d.tags ? `<div class="diary-tags">${d.tags.split(',').map(t=>`<span class="tag">${esc(t.trim())}</span>`).join('')}</div>` : ''}
+      </div>
+    `).join('') : '<div class="empty"><div class="icon">📝</div><p>Chưa có nhật ký nào cho bé</p><button class="btn btn-primary" onclick="showDiaryForm()">✏️ Viết nhật ký đầu tiên</button></div>'}
+  `;
+}
+
+function showDiaryForm(id) {
+  const edit = id ? true : false;
+  const moodsHtml = MOODS.map(m=>`<button type="button" class="mood-btn ${m.v==='happy'?'selected':''}" data-mood="${m.v}" onclick="pickMood(this)">${m.e}</button>`).join('');
+  const catsHtml = CATEGORIES.map(c=>`<option value="${c.v}">${c.e} ${c.l}</option>`).join('');
+  openModal(edit ? 'Sửa nhật ký' : 'Viết nhật ký mới', `
+    <div class="form-group"><label>Ngày</label><input type="date" id="f-date" value="${new Date().toISOString().slice(0,10)}"></div>
+    <div class="form-group"><label>Tiêu đề</label><input id="f-title" placeholder="Hôm nay con..."></div>
+    <div class="form-group"><label>Nội dung *</label><textarea id="f-content" rows="5" placeholder="Viết về ngày hôm nay của bé..."></textarea></div>
+    <div class="form-group"><label>Tâm trạng</label><div class="mood-picker">${moodsHtml}</div></div>
+    <div class="form-group"><label>Tags (phân cách bằng dấu phẩy)</label><input id="f-tags" placeholder="đi chơi, học bài, ăn ngon..."></div>
+  `, `<button class="btn btn-ghost" onclick="closeModal()">Hủy</button><button class="btn btn-primary" onclick="saveDiary(${id||'null'})">💾 Lưu</button>`);
+  if (edit) {
+    api(`/kids/${state.selectedKid}/diary`).then(entries=>{
+      const d = entries.find(e=>e.id===id);
+      if(d){
+        document.getElementById('f-date').value=d.date;
+        document.getElementById('f-title').value=d.title||'';
+        document.getElementById('f-content').value=d.content;
+        document.getElementById('f-tags').value=d.tags||'';
+        document.querySelectorAll('.mood-btn').forEach(b=>b.classList.remove('selected'));
+        const mb=document.querySelector(`.mood-btn[data-mood="${d.mood}"]`);
+        if(mb)mb.classList.add('selected');
+      }
+    });
+  }
+}
+
+function pickMood(btn) {
+  document.querySelectorAll('.mood-btn').forEach(b=>b.classList.remove('selected'));
+  btn.classList.add('selected');
+}
+
+async function saveDiary(id) {
+  const mood = document.querySelector('.mood-btn.selected')?.dataset.mood || 'happy';
+  const data = {
+    date: document.getElementById('f-date').value,
+    title: document.getElementById('f-title').value.trim(),
+    content: document.getElementById('f-content').value.trim(),
+    mood, tags: document.getElementById('f-tags').value.trim()
+  };
+  if (!data.content) return toast('⚠️ Nhập nội dung nhé!');
+  if (id) {
+    await api(`/diary/${id}`, {method:'PUT', body:data});
+    toast('✅ Đã cập nhật nhật ký!');
+  } else {
+    await api(`/kids/${state.selectedKid}/diary`, {method:'POST', body:data});
+    toast('📝 Đã thêm nhật ký mới!');
+  }
+  closeModal(); render();
+}
+
+async function deleteDiary(id) {
+  if (!confirm('Xóa nhật ký này?')) return;
+  await api(`/diary/${id}`, {method:'DELETE'});
+  toast('🗑 Đã xóa'); render();
+}
+
+// ============ PLANS ============
+async function renderPlans() {
+  if (!state.selectedKid) return renderNoKid();
+  const plans = await api(`/kids/${state.selectedKid}/plans`);
+  const c = document.getElementById('content');
+  const grouped = {planned:[], in_progress:[], done:[]};
+  plans.forEach(p => (grouped[p.status]||grouped.planned).push(p));
+  c.innerHTML = `
+    <div style="display:flex;justify-content:flex-end;margin-bottom:20px">
+      <button class="btn btn-primary" onclick="showPlanForm()">🎯 Thêm kế hoạch</button>
+    </div>
+    <div class="kanban">
+      ${PLAN_STATUSES.map(s=>`
+        <div class="kanban-col">
+          <h4>${s.l} <span style="opacity:.5">(${grouped[s.v].length})</span></h4>
+          ${grouped[s.v].map(p=>`
+            <div class="plan-card" onclick="showPlanForm(${p.id})">
+              <h5>${esc(p.title)}</h5>
+              ${p.description?`<p>${esc(p.description)}</p>`:''}
+              <div class="plan-meta">
+                <span style="font-size:.75rem">${(CATEGORIES.find(c=>c.v===p.category)||CATEGORIES[9]).e}</span>
+                ${p.target_date?`<span style="font-size:.72rem;color:var(--text2)">📅 ${p.target_date}</span>`:''}
+                <span class="priority priority-${p.priority}">${p.priority}</span>
+              </div>
+            </div>
+          `).join('')}
+          ${!grouped[s.v].length?'<div style="text-align:center;padding:20px;color:var(--text2);font-size:.8rem">Trống</div>':''}
+        </div>
+      `).join('')}
+    </div>
+  `;
+}
+
+function showPlanForm(id) {
+  const catsHtml = CATEGORIES.map(c=>`<option value="${c.v}">${c.e} ${c.l}</option>`).join('');
+  const statusHtml = PLAN_STATUSES.map(s=>`<option value="${s.v}">${s.l}</option>`).join('');
+  openModal(id?'Sửa kế hoạch':'Thêm kế hoạch mới', `
+    <div class="form-group"><label>Tiêu đề *</label><input id="f-title" placeholder="Học bơi, đi Đà Lạt..."></div>
+    <div class="form-group"><label>Mô tả</label><textarea id="f-desc" rows="3" placeholder="Chi tiết..."></textarea></div>
+    <div class="form-row">
+      <div class="form-group"><label>Danh mục</label><select id="f-cat">${catsHtml}</select></div>
+      <div class="form-group"><label>Ngày mục tiêu</label><input type="date" id="f-date"></div>
+    </div>
+    <div class="form-row">
+      <div class="form-group"><label>Trạng thái</label><select id="f-status">${statusHtml}</select></div>
+      <div class="form-group"><label>Ưu tiên</label>
+        <select id="f-priority"><option value="low">🟢 Thấp</option><option value="medium" selected>🟡 Trung bình</option><option value="high">🔴 Cao</option></select>
+      </div>
+    </div>
+  `, `<button class="btn btn-ghost" onclick="closeModal()">Hủy</button>
+     ${id?`<button class="btn btn-danger" onclick="deletePlan(${id})">🗑 Xóa</button>`:''}
+     <button class="btn btn-primary" onclick="savePlan(${id||'null'})">💾 Lưu</button>`);
+  if (id) {
+    api(`/kids/${state.selectedKid}/plans`).then(plans=>{
+      const p=plans.find(x=>x.id===id);
+      if(p){
+        document.getElementById('f-title').value=p.title;
+        document.getElementById('f-desc').value=p.description||'';
+        document.getElementById('f-cat').value=p.category;
+        document.getElementById('f-date').value=p.target_date||'';
+        document.getElementById('f-status').value=p.status;
+        document.getElementById('f-priority').value=p.priority;
+      }
+    });
+  }
+}
+
+async function savePlan(id) {
+  const data = {
+    title: document.getElementById('f-title').value.trim(),
+    description: document.getElementById('f-desc').value.trim(),
+    category: document.getElementById('f-cat').value,
+    target_date: document.getElementById('f-date').value,
+    status: document.getElementById('f-status').value,
+    priority: document.getElementById('f-priority').value
+  };
+  if (!data.title) return toast('⚠️ Nhập tiêu đề!');
+  if (id) await api(`/plans/${id}`, {method:'PUT', body:data});
+  else await api(`/kids/${state.selectedKid}/plans`, {method:'POST', body:data});
+  toast('🎯 Đã lưu kế hoạch!'); closeModal(); render();
+}
+
+async function deletePlan(id) {
+  if (!confirm('Xóa kế hoạch?')) return;
+  await api(`/plans/${id}`, {method:'DELETE'});
+  toast('🗑 Đã xóa'); closeModal(); render();
+}
+
+// ============ MILESTONES ============
+async function renderMilestones() {
+  if (!state.selectedKid) return renderNoKid();
+  const ms = await api(`/kids/${state.selectedKid}/milestones`);
+  const c = document.getElementById('content');
+  c.innerHTML = `
+    <div style="display:flex;justify-content:flex-end;margin-bottom:20px">
+      <button class="btn btn-primary" onclick="showMilestoneForm()">⭐ Thêm cột mốc</button>
+    </div>
+    ${ms.length ? `<div class="timeline">${ms.map(m=>`
+      <div class="timeline-item">
+        <div class="timeline-dot"></div>
+        <div class="card" style="padding:16px 20px">
+          <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">
+            <span style="font-size:1.3rem">${(MILESTONE_CATS.find(c=>c.v===m.category)||MILESTONE_CATS[6]).e}</span>
+            <strong>${esc(m.title)}</strong>
+            <span class="date" style="margin-left:auto">${m.date}</span>
+            <button class="btn-icon" onclick="deleteMilestone(${m.id})" title="Xóa">🗑</button>
+          </div>
+          ${m.description?`<p style="font-size:.85rem;color:var(--text2);line-height:1.6">${esc(m.description)}</p>`:''}
+        </div>
+      </div>
+    `).join('')}</div>` : '<div class="empty"><div class="icon">⭐</div><p>Ghi lại những cột mốc đáng nhớ của bé!</p><button class="btn btn-primary" onclick="showMilestoneForm()">⭐ Thêm cột mốc đầu tiên</button></div>'}
+  `;
+}
+
+function showMilestoneForm() {
+  const catsHtml = MILESTONE_CATS.map(c=>`<option value="${c.v}">${c.e} ${c.l}</option>`).join('');
+  openModal('Thêm cột mốc', `
+    <div class="form-group"><label>Tiêu đề *</label><input id="f-title" placeholder="Bước đi đầu tiên, nói câu đầu..."></div>
+    <div class="form-group"><label>Ngày *</label><input type="date" id="f-date" value="${new Date().toISOString().slice(0,10)}"></div>
+    <div class="form-group"><label>Danh mục</label><select id="f-cat">${catsHtml}</select></div>
+    <div class="form-group"><label>Mô tả</label><textarea id="f-desc" rows="3" placeholder="Khoảnh khắc đáng nhớ..."></textarea></div>
+  `, `<button class="btn btn-ghost" onclick="closeModal()">Hủy</button><button class="btn btn-primary" onclick="saveMilestone()">💾 Lưu</button>`);
+}
+
+async function saveMilestone() {
+  const data = {
+    title: document.getElementById('f-title').value.trim(),
+    date: document.getElementById('f-date').value,
+    category: document.getElementById('f-cat').value,
+    description: document.getElementById('f-desc').value.trim()
+  };
+  if (!data.title||!data.date) return toast('⚠️ Nhập tiêu đề và ngày!');
+  await api(`/kids/${state.selectedKid}/milestones`, {method:'POST', body:data});
+  toast('⭐ Đã thêm cột mốc!'); closeModal(); render();
+}
+
+async function deleteMilestone(id) {
+  if (!confirm('Xóa cột mốc?')) return;
+  await api(`/milestones/${id}`, {method:'DELETE'});
+  toast('🗑 Đã xóa'); render();
+}
+
+// ============ GROWTH ============
+async function renderGrowth() {
+  if (!state.selectedKid) return renderNoKid();
+  const records = await api(`/kids/${state.selectedKid}/growth`);
+  const c = document.getElementById('content');
+  const maxH = records.length ? Math.max(...records.map(r=>r.height||0)) : 150;
+  const maxW = records.length ? Math.max(...records.map(r=>r.weight||0)) : 50;
+  c.innerHTML = `
+    <div style="display:flex;justify-content:flex-end;margin-bottom:20px">
+      <button class="btn btn-primary" onclick="showGrowthForm()">📏 Thêm số đo</button>
+    </div>
+    <div class="grid-2">
+      <div class="card"><div class="card-body">
+        <h4 style="margin-bottom:12px">📏 Chiều cao (cm)</h4>
+        <div class="chart-container">
+          ${records.map((r,i)=>{
+            if(!r.height) return '';
+            const x = 40 + (i * (100/(records.length||1)));
+            const h = (r.height/maxH)*160;
+            return `<div class="chart-bar" style="left:${x}%;height:${h}px;background:linear-gradient(var(--primary),var(--primary-light))"></div>
+                    <div class="chart-label" style="left:${x}%">${r.date.slice(5)}</div>
+                    <div class="chart-value" style="left:${x}%;bottom:${h+30}px">${r.height}</div>`;
+          }).join('')}
+          <div style="position:absolute;bottom:0;left:0;right:0;height:1px;background:var(--border)"></div>
+        </div>
+      </div></div>
+      <div class="card"><div class="card-body">
+        <h4 style="margin-bottom:12px">⚖️ Cân nặng (kg)</h4>
+        <div class="chart-container">
+          ${records.map((r,i)=>{
+            if(!r.weight) return '';
+            const x = 40 + (i * (100/(records.length||1)));
+            const h = (r.weight/maxW)*160;
+            return `<div class="chart-bar" style="left:${x}%;height:${h}px;background:linear-gradient(var(--secondary),#55efc4)"></div>
+                    <div class="chart-label" style="left:${x}%">${r.date.slice(5)}</div>
+                    <div class="chart-value" style="left:${x}%;bottom:${h+30}px;color:var(--secondary)">${r.weight}</div>`;
+          }).join('')}
+          <div style="position:absolute;bottom:0;left:0;right:0;height:1px;background:var(--border)"></div>
+        </div>
+      </div></div>
+    </div>
+    <div class="card" style="margin-top:20px"><div class="card-body">
+      <h4 style="margin-bottom:12px">📋 Lịch sử đo</h4>
+      ${records.length ? `<table style="width:100%;border-collapse:collapse">
+        <tr style="border-bottom:2px solid var(--border)"><th style="text-align:left;padding:8px;font-size:.75rem;color:var(--text2)">Ngày</th><th style="text-align:left;padding:8px;font-size:.75rem;color:var(--text2)">Chiều cao</th><th style="text-align:left;padding:8px;font-size:.75rem;color:var(--text2)">Cân nặng</th><th style="text-align:left;padding:8px;font-size:.75rem;color:var(--text2)">Vòng đầu</th><th></th></tr>
+        ${records.map(r=>`<tr style="border-bottom:1px solid var(--border)">
+          <td style="padding:8px;font-size:.85rem">${r.date}</td>
+          <td style="padding:8px;font-size:.85rem">${r.height?r.height+' cm':'-'}</td>
+          <td style="padding:8px;font-size:.85rem">${r.weight?r.weight+' kg':'-'}</td>
+          <td style="padding:8px;font-size:.85rem">${r.head_circumference?r.head_circumference+' cm':'-'}</td>
+          <td style="padding:8px"><button class="btn-icon" onclick="deleteGrowth(${r.id})">🗑</button></td>
+        </tr>`).join('')}
+      </table>` : '<div class="empty"><p>Chưa có dữ liệu nào</p></div>'}
+    </div></div>
+  `;
+}
+
+function showGrowthForm() {
+  openModal('Thêm số đo', `
+    <div class="form-group"><label>Ngày</label><input type="date" id="f-date" value="${new Date().toISOString().slice(0,10)}"></div>
+    <div class="form-row">
+      <div class="form-group"><label>Chiều cao (cm)</label><input type="number" step="0.1" id="f-height" placeholder="120"></div>
+      <div class="form-group"><label>Cân nặng (kg)</label><input type="number" step="0.1" id="f-weight" placeholder="25"></div>
+    </div>
+    <div class="form-group"><label>Vòng đầu (cm)</label><input type="number" step="0.1" id="f-head" placeholder="50"></div>
+    <div class="form-group"><label>Ghi chú</label><input id="f-notes" placeholder="Khám sức khỏe..."></div>
+  `, `<button class="btn btn-ghost" onclick="closeModal()">Hủy</button><button class="btn btn-primary" onclick="saveGrowth()">💾 Lưu</button>`);
+}
+
+async function saveGrowth() {
+  const data = {
+    date: document.getElementById('f-date').value,
+    height: parseFloat(document.getElementById('f-height').value)||null,
+    weight: parseFloat(document.getElementById('f-weight').value)||null,
+    head_circumference: parseFloat(document.getElementById('f-head').value)||null,
+    notes: document.getElementById('f-notes').value.trim()
+  };
+  await api(`/kids/${state.selectedKid}/growth`, {method:'POST', body:data});
+  toast('📏 Đã lưu số đo!'); closeModal(); render();
+}
+
+async function deleteGrowth(id) {
+  if (!confirm('Xóa?')) return;
+  await api(`/growth/${id}`, {method:'DELETE'}); render();
+}
+
+// ============ PHOTOS ============
+async function renderPhotos() {
+  if (!state.selectedKid) return renderNoKid();
+  const photos = await api(`/kids/${state.selectedKid}/photos`);
+  const c = document.getElementById('content');
+  c.innerHTML = `
+    <div style="display:flex;justify-content:flex-end;margin-bottom:20px">
+      <button class="btn btn-primary" onclick="showPhotoUpload()">📷 Tải ảnh lên</button>
+    </div>
+    ${photos.length ? `<div class="photo-grid">${photos.map(p=>`
+      <div class="photo-card" onclick="window.open('/uploads/${p.filename}','_blank')">
+        <img src="/uploads/${p.filename}" alt="${esc(p.caption||'')}" loading="lazy">
+        <div class="caption">${esc(p.caption||p.date)}</div>
+      </div>
+    `).join('')}</div>` : '<div class="empty"><div class="icon">📷</div><p>Chưa có ảnh nào</p><button class="btn btn-primary" onclick="showPhotoUpload()">📷 Tải ảnh đầu tiên</button></div>'}
+  `;
+}
+
+function showPhotoUpload() {
+  openModal('Tải ảnh lên', `
+    <div class="form-group"><label>Chọn ảnh</label><input type="file" id="f-file" accept="image/*,video/*" multiple></div>
+    <div class="form-group"><label>Chú thích</label><input id="f-caption" placeholder="Kỷ niệm đáng nhớ..."></div>
+    <div class="form-group"><label>Ngày</label><input type="date" id="f-date" value="${new Date().toISOString().slice(0,10)}"></div>
+  `, `<button class="btn btn-ghost" onclick="closeModal()">Hủy</button><button class="btn btn-primary" onclick="uploadPhotos()">📤 Tải lên</button>`);
+}
+
+async function uploadPhotos() {
+  const files = document.getElementById('f-file').files;
+  if (!files.length) return toast('⚠️ Chọn ảnh nhé!');
+  const caption = document.getElementById('f-caption').value.trim();
+  const date = document.getElementById('f-date').value;
+  for (const file of files) {
+    const fd = new FormData();
+    fd.append('photo', file);
+    fd.append('caption', caption);
+    fd.append('date', date);
+    await fetch(`/api/kids/${state.selectedKid}/photos`, {method:'POST', body:fd});
+  }
+  toast('📷 Đã tải lên!'); closeModal(); render();
+}
+
+// ============ PROFILE ============
+async function renderProfile() {
+  if (!state.selectedKid) return renderNoKid();
+  const kid = await api(`/kids/${state.selectedKid}`);
+  const c = document.getElementById('content');
+  const age = kid.birthday ? calcAge(kid.birthday) : '';
+  c.innerHTML = `
+    <div class="profile-hero">
+      <div class="profile-avatar">${kid.avatar||'👶'}</div>
+      <div class="profile-name">${esc(kid.name)}</div>
+      <div class="profile-sub">${kid.nickname?`"${esc(kid.nickname)}"`:''} ${age?'· '+age:''}</div>
+    </div>
+    <div style="display:flex;gap:10px;justify-content:center;margin-bottom:20px">
+      <button class="btn btn-ghost" onclick="showKidForm(${kid.id})">✏️ Sửa hồ sơ</button>
+      <button class="btn btn-danger btn-sm" onclick="deleteKid(${kid.id})">🗑 Xóa bé</button>
+    </div>
+    <div class="info-grid">
+      <div class="info-item"><div class="label">🎂 Ngày sinh</div><div class="value">${kid.birthday||'Chưa cập nhật'}</div></div>
+      <div class="info-item"><div class="label">👫 Giới tính</div><div class="value">${kid.gender==='boy'?'Bé trai 👦':kid.gender==='girl'?'Bé gái 👧':'Chưa rõ'}</div></div>
+      <div class="info-item"><div class="label">🩸 Nhóm máu</div><div class="value">${kid.blood_type||'Chưa cập nhật'}</div></div>
+      <div class="info-item"><div class="label">⚠️ Dị ứng</div><div class="value">${kid.allergies||'Không có'}</div></div>
+    </div>
+    ${kid.notes?`<div class="card" style="margin-top:16px"><div class="card-body"><h4 style="margin-bottom:8px">📝 Ghi chú</h4><p style="color:var(--text2);line-height:1.7">${esc(kid.notes)}</p></div></div>`:''}
+  `;
+}
+
+// Kid form
+function showKidForm(id) {
+  const edit = id ? true : false;
+  openModal(edit?'Sửa hồ sơ bé':'Thêm bé mới', `
+    <div class="form-group"><label>Emoji avatar</label><input id="f-avatar" placeholder="👶 🧒 👦 👧 🎀" maxlength="4"></div>
+    <div class="form-group"><label>Tên bé *</label><input id="f-name" placeholder="Nguyễn Văn A"></div>
+    <div class="form-group"><label>Tên ở nhà</label><input id="f-nickname" placeholder="Bo, Mun, Sushi..."></div>
+    <div class="form-row">
+      <div class="form-group"><label>Ngày sinh</label><input type="date" id="f-birthday"></div>
+      <div class="form-group"><label>Giới tính</label>
+        <select id="f-gender"><option value="">Chọn</option><option value="boy">👦 Trai</option><option value="girl">👧 Gái</option></select>
+      </div>
+    </div>
+    <div class="form-row">
+      <div class="form-group"><label>Nhóm máu</label><input id="f-blood" placeholder="A, B, AB, O..."></div>
+      <div class="form-group"><label>Dị ứng</label><input id="f-allergies" placeholder="Sữa, trứng, bụi..."></div>
+    </div>
+    <div class="form-group"><label>Ghi chú</label><textarea id="f-notes" rows="3" placeholder="Sở thích, tính cách, điều đặc biệt..."></textarea></div>
+  `, `<button class="btn btn-ghost" onclick="closeModal()">Hủy</button><button class="btn btn-primary" onclick="saveKid(${id||'null'})">💾 Lưu</button>`);
+  if (edit) {
+    api(`/kids/${id}`).then(k=>{
+      document.getElementById('f-avatar').value=k.avatar||'';
+      document.getElementById('f-name').value=k.name;
+      document.getElementById('f-nickname').value=k.nickname||'';
+      document.getElementById('f-birthday').value=k.birthday||'';
+      document.getElementById('f-gender').value=k.gender||'';
+      document.getElementById('f-blood').value=k.blood_type||'';
+      document.getElementById('f-allergies').value=k.allergies||'';
+      document.getElementById('f-notes').value=k.notes||'';
+    });
+  }
+}
+
+async function saveKid(id) {
+  const data = {
+    avatar: document.getElementById('f-avatar').value.trim()||'👶',
+    name: document.getElementById('f-name').value.trim(),
+    nickname: document.getElementById('f-nickname').value.trim(),
+    birthday: document.getElementById('f-birthday').value,
+    gender: document.getElementById('f-gender').value,
+    blood_type: document.getElementById('f-blood').value.trim(),
+    allergies: document.getElementById('f-allergies').value.trim(),
+    notes: document.getElementById('f-notes').value.trim()
+  };
+  if (!data.name) return toast('⚠️ Nhập tên bé nhé!');
+  if (id) {
+    await api(`/kids/${id}`, {method:'PUT', body:data});
+    toast('✅ Đã cập nhật hồ sơ!');
+  } else {
+    const r = await api('/kids', {method:'POST', body:data});
+    state.selectedKid = r.id;
+    toast('🎉 Đã thêm bé mới!');
+  }
+  closeModal(); await loadKids(); render();
+}
+
+async function deleteKid(id) {
+  if (!confirm('Xóa bé này và toàn bộ dữ liệu?')) return;
+  await api(`/kids/${id}`, {method:'DELETE'});
+  state.selectedKid = null;
+  toast('🗑 Đã xóa'); await loadKids(); render();
+}
+
+// Helpers
+function renderNoKid() {
+  document.getElementById('content').innerHTML = '<div class="empty"><div class="icon">👶</div><p>Hãy thêm bé yêu trước nhé!</p><button class="btn btn-primary" onclick="showKidForm()">+ Thêm bé</button></div>';
+}
+function esc(s) { const d=document.createElement('div');d.textContent=s;return d.innerHTML; }
+function calcAge(b) {
+  const bd=new Date(b), now=new Date();
+  let y=now.getFullYear()-bd.getFullYear(), m=now.getMonth()-bd.getMonth();
+  if(m<0){y--;m+=12}
+  return y>0?`${y} tuổi ${m} tháng`:`${m} tháng`;
+}
+
+// Init
+loadKids().then(()=>render());
+</script>
+</body>
+</html>
