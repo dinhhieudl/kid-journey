@@ -486,6 +486,51 @@ function render() {
 async function renderDashboard() {
   const [kids, stats] = await Promise.all([api('/kids'), api('/stats')]);
   const c = document.getElementById('content');
+
+  // ONBOARDING: No kids yet
+  if (kids.length === 0) {
+    c.innerHTML = `
+      <div style="text-align:center;padding:32px 16px">
+        <div style="font-size:4rem;margin-bottom:16px">🌱</div>
+        <h2 style="font-size:1.5rem;font-weight:800;margin-bottom:8px">Chào mừng đến Kid Journey!</h2>
+        <p style="color:var(--text2);font-size:.95rem;max-width:420px;margin:0 auto 28px;line-height:1.6">
+          Nhật ký, kế hoạch và theo dõi phát triển cho bé yêu.<br>
+          Bắt đầu bằng cách tạo hồ sơ cho bé nhé!
+        </p>
+        <button class="btn btn-primary" style="font-size:1rem;padding:14px 32px;border-radius:14px" onclick="showKidForm()">
+          👶 Tạo hồ sơ bé đầu tiên
+        </button>
+        <div style="margin-top:40px;text-align:left;max-width:500px;margin-left:auto;margin-right:auto">
+          <h4 style="margin-bottom:16px;font-size:.95rem">Bạn có thể làm gì với Kid Journey?</h4>
+          <div style="display:grid;gap:12px">
+            <div style="display:flex;align-items:center;gap:14px;padding:14px 16px;background:var(--card);border-radius:12px;border:1px solid var(--border)">
+              <span style="font-size:1.5rem">📝</span>
+              <div><div style="font-weight:600;font-size:.9rem">Nhật ký hàng ngày</div><div style="font-size:.8rem;color:var(--text2)">Ghi lại khoảnh khắc, cảm xúc của bé mỗi ngày</div></div>
+            </div>
+            <div style="display:flex;align-items:center;gap:14px;padding:14px 16px;background:var(--card);border-radius:12px;border:1px solid var(--border)">
+              <span style="font-size:1.5rem">🎯</span>
+              <div><div style="font-weight:600;font-size:.9rem">Kế hoạch tương lai</div><div style="font-size:.8rem;color:var(--text2)">Lập kế hoạch học tập, du lịch, kỹ năng cho bé</div></div>
+            </div>
+            <div style="display:flex;align-items:center;gap:14px;padding:14px 16px;background:var(--card);border-radius:12px;border:1px solid var(--border)">
+              <span style="font-size:1.5rem">🧬</span>
+              <div><div style="font-weight:600;font-size:.9rem">Gợi ý Montessori</div><div style="font-size:.8rem;color:var(--text2)">Hoạt động, lộ trình phát triển theo độ tuổi</div></div>
+            </div>
+            <div style="display:flex;align-items:center;gap:14px;padding:14px 16px;background:var(--card);border-radius:12px;border:1px solid var(--border)">
+              <span style="font-size:1.5rem">📏</span>
+              <div><div style="font-weight:600;font-size:.9rem">Theo dõi phát triển</div><div style="font-size:.8rem;color:var(--text2)">Chiều cao, cân nặng, cột mốc đáng nhớ</div></div>
+            </div>
+            <div style="display:flex;align-items:center;gap:14px;padding:14px 16px;background:var(--card);border-radius:12px;border:1px solid var(--border)">
+              <span style="font-size:1.5rem">📷</span>
+              <div><div style="font-weight:600;font-size:.9rem">Album ảnh</div><div style="font-size:.8rem;color:var(--text2)">Lưu giữ khoảnh khắc đáng nhớ</div></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    `;
+    return;
+  }
+
+  // Normal dashboard with stats
   c.innerHTML = `
     <div class="stats">
       <div class="stat-card"><div class="num">${stats.kidCount}</div><div class="label">Bé yêu</div></div>
@@ -1110,7 +1155,14 @@ async function deleteKid(id) {
 
 // Helpers
 function renderNoKid() {
-  document.getElementById('content').innerHTML = '<div class="empty"><div class="icon">👶</div><p>Hãy thêm bé yêu trước nhé!</p><button class="btn btn-primary" onclick="showKidForm()">+ Thêm bé</button></div>';
+  document.getElementById('content').innerHTML = `
+    <div style="text-align:center;padding:48px 16px">
+      <div style="font-size:3.5rem;margin-bottom:16px">👶</div>
+      <h3 style="font-size:1.2rem;margin-bottom:8px">Chưa có hồ sơ bé</h3>
+      <p style="color:var(--text2);margin-bottom:20px;font-size:.9rem">Tạo hồ sơ bé để bắt đầu sử dụng tính năng này</p>
+      <button class="btn btn-primary" style="font-size:1rem;padding:12px 28px" onclick="showKidForm()">+ Tạo hồ sơ bé</button>
+    </div>
+  `;
 }
 function esc(s) { const d=document.createElement('div');d.textContent=s;return d.innerHTML; }
 function calcAge(b) {
