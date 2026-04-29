@@ -291,6 +291,30 @@ app.get('/api/stats', (req, res) => {
   res.json({ kidCount, diaryCount, planCount, milestoneCount, recentDiary, upcomingPlans });
 });
 
+// ==================== MONTESSORI API ====================
+const montessori = require('./montessori');
+
+app.get('/api/kids/:kidId/montessori', (req, res) => {
+  const kid = db.prepare('SELECT * FROM kids WHERE id = ?').get(req.params.kidId);
+  if (!kid) return res.status(404).json({ error: 'Not found' });
+
+  const ageMonths = montessori.getAgeInMonths(kid.birthday);
+  const currentStage = montessori.getCurrentStage(kid.birthday);
+  const upcomingStages = montessori.getUpcomingStages(kid.birthday);
+  const dailyActivities = montessori.getDailyActivities(kid.birthday, 6);
+  const allActivities = montessori.getAllActivities(kid.birthday);
+  const parentTips = montessori.getParentTips(kid.birthday);
+
+  res.json({
+    ageMonths,
+    currentStage,
+    upcomingStages,
+    dailyActivities,
+    allActivities,
+    parentTips,
+  });
+});
+
 // SPA fallback
 app.get('/{*splat}', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'index.html'));
