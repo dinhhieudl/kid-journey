@@ -1,0 +1,13 @@
+version: '3.8'
+
+services:
+  kid-journey:
+    build: .
+    container_name: kid-journey-app
+    restart: unless-stopped
+    ports:
+      - "3107:3107"
+    volumes:
+      - ./data:/app/data
+    environment:
+      - TZ=Asia/Ho_Chi_Minh
