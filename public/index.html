@@ -384,13 +384,23 @@ const MILESTONE_CATS = [
   {v:'special',e:'🌟',l:'Đặc biệt'}
 ];
 
-let state = { kids:[], selectedKid:null, page:'dashboard' };
+let state = { kids:[], selectedKid:null, page:'dashboard', token:null, user:null };
 
-// API
+// API — auto-attach JWT
 async function api(path, opts={}) {
   const o = { headers:{'Content-Type':'application/json'}, ...opts };
+  if (state.token) o.headers['Authorization'] = 'Bearer ' + state.token;
   if (o.body && typeof o.body === 'object') o.body = JSON.stringify(o.body);
   const r = await fetch('/api'+path, o);
+  if (r.status === 401 && !path.startsWith('/auth')) { logout(); return null; }
+  return r.json();
+}
+
+// Upload helper (multipart, with JWT)
+async function apiUpload(path, formData) {
+  const headers = {};
+  if (state.token) headers['Authorization'] = 'Bearer ' + state.token;
+  const r = await fetch('/api'+path, { method:'POST', headers, body:formData });
   return r.json();
 }
 
@@ -795,61 +805,139 @@ async function deleteMilestone(id) {
   toast('🗑 Đã xóa'); render();
 }
 
-// ============ GROWTH ============
+// ============ GROWTH (with WHO analysis) ============
 async function renderGrowth() {
   if (!state.selectedKid) return renderNoKid();
-  const records = await api(`/kids/${state.selectedKid}/growth`);
+  const kid = await api(`/kids/${state.selectedKid}`);
+  const data = await api(`/kids/${state.selectedKid}/growth/analysis`);
   const c = document.getElementById('content');
-  const maxH = records.length ? Math.max(...records.map(r=>r.height||0)) : 150;
-  const maxW = records.length ? Math.max(...records.map(r=>r.weight||0)) : 50;
+
+  if (!data) return;
+
+  const records = data.records || [];
+  const whoAvailable = data.whoAvailable;
+  const whoCurves = data.whoCurves;
+  const summary = data.summary;
+
+  // Build WHO evaluation cards
+  let whoSection = '';
+  if (whoAvailable && records.length > 0) {
+    const latest = records[records.length - 1];
+    const who = latest.who || {};
+    whoSection = `
+      <div class="card" style="margin-bottom:20px"><div class="card-body">
+        <h4 style="margin-bottom:14px">📊 So sánh với chuẩn WHO · Lần đo mới nhất (${latest.date})</h4>
+        <div class="grid-3">
+          ${who.height ? `
+          <div style="background:var(--bg);border-radius:12px;padding:16px;text-align:center;border-left:4px solid ${who.height.evaluation.color}">
+            <div style="font-size:1.5rem;margin-bottom:4px">📏</div>
+            <div style="font-size:.75rem;color:var(--text2)">Chiều cao</div>
+            <div style="font-size:1.3rem;font-weight:800;margin:4px 0">${latest.height} cm</div>
+            <div style="font-size:.8rem;font-weight:600;color:${who.height.evaluation.color}">${who.height.evaluation.icon} ${who.height.evaluation.label}</div>
+            <div style="font-size:.72rem;color:var(--text2);margin-top:4px">Z: ${who.height.zScore} · P${who.height.percentile}</div>
+            <div style="font-size:.7rem;color:var(--text2)">Median WHO: ${who.height.median} cm</div>
+          </div>` : ''}
+          ${who.weight ? `
+          <div style="background:var(--bg);border-radius:12px;padding:16px;text-align:center;border-left:4px solid ${who.weight.evaluation.color}">
+            <div style="font-size:1.5rem;margin-bottom:4px">⚖️</div>
+            <div style="font-size:.75rem;color:var(--text2)">Cân nặng</div>
+            <div style="font-size:1.3rem;font-weight:800;margin:4px 0">${latest.weight} kg</div>
+            <div style="font-size:.8rem;font-weight:600;color:${who.weight.evaluation.color}">${who.weight.evaluation.icon} ${who.weight.evaluation.label}</div>
+            <div style="font-size:.72rem;color:var(--text2);margin-top:4px">Z: ${who.weight.zScore} · P${who.weight.percentile}</div>
+            <div style="font-size:.7rem;color:var(--text2)">Median WHO: ${who.weight.median} kg</div>
+          </div>` : ''}
+          ${who.headCirc ? `
+          <div style="background:var(--bg);border-radius:12px;padding:16px;text-align:center;border-left:4px solid ${who.headCirc.evaluation.color}">
+            <div style="font-size:1.5rem;margin-bottom:4px">🧠</div>
+            <div style="font-size:.75rem;color:var(--text2)">Vòng đầu</div>
+            <div style="font-size:1.3rem;font-weight:800;margin:4px 0">${latest.head_circumference} cm</div>
+            <div style="font-size:.8rem;font-weight:600;color:${who.headCirc.evaluation.color}">${who.headCirc.evaluation.icon} ${who.headCirc.evaluation.label}</div>
+            <div style="font-size:.72rem;color:var(--text2);margin-top:4px">Z: ${who.headCirc.zScore} · P${who.headCirc.percentile}</div>
+            <div style="font-size:.7rem;color:var(--text2)">Median WHO: ${who.headCirc.median} cm</div>
+          </div>` : ''}
+        </div>
+        ${summary && summary.alerts.length ? `
+        <div style="margin-top:14px;padding:12px;background:#fff3e0;border-radius:10px;border:1px solid #ffe0b2">
+          <div style="font-size:.8rem;font-weight:600;color:#e65100;margin-bottom:4px">⚠️ Lưu ý</div>
+          ${summary.alerts.map(a => `<div style="font-size:.8rem;color:var(--text2)">• ${a.type === 'height' ? 'Chiều cao' : 'Cân nặng'} ngày ${a.date}: Z-score ${a.zScore} (${a.evaluation.label})</div>`).join('')}
+        </div>` : ''}
+      </div></div>
+    `;
+  } else if (!whoAvailable && data.message) {
+    whoSection = `
+      <div class="card" style="margin-bottom:20px"><div class="card-body" style="text-align:center;padding:24px">
+        <div style="font-size:2rem;margin-bottom:8px">📊</div>
+        <p style="color:var(--text2);font-size:.9rem">${data.message}</p>
+        <button class="btn btn-ghost btn-sm" style="margin-top:10px" onclick="showKidForm(${state.selectedKid})">✏️ Cập nhật hồ sơ bé</button>
+      </div></div>
+    `;
+  }
+
   c.innerHTML = `
     <div style="display:flex;justify-content:flex-end;margin-bottom:20px">
       <button class="btn btn-primary" onclick="showGrowthForm()">📏 Thêm số đo</button>
     </div>
+    ${whoSection}
+    ${whoAvailable && whoCurves ? `
+    <!-- WHO Growth Charts -->
     <div class="grid-2">
       <div class="card"><div class="card-body">
-        <h4 style="margin-bottom:12px">📏 Chiều cao (cm)</h4>
-        <div class="chart-container">
-          ${records.map((r,i)=>{
-            if(!r.height) return '';
-            const x = 40 + (i * (100/(records.length||1)));
-            const h = (r.height/maxH)*160;
-            return `<div class="chart-bar" style="left:${x}%;height:${h}px;background:linear-gradient(var(--primary),var(--primary-light))"></div>
-                    <div class="chart-label" style="left:${x}%">${r.date.slice(5)}</div>
-                    <div class="chart-value" style="left:${x}%;bottom:${h+30}px">${r.height}</div>`;
-          }).join('')}
-          <div style="position:absolute;bottom:0;left:0;right:0;height:1px;background:var(--border)"></div>
-        </div>
+        <h4 style="margin-bottom:12px">📏 Chiều cao vs WHO</h4>
+        <canvas id="heightChart" style="width:100%;height:280px"></canvas>
       </div></div>
       <div class="card"><div class="card-body">
-        <h4 style="margin-bottom:12px">⚖️ Cân nặng (kg)</h4>
-        <div class="chart-container">
-          ${records.map((r,i)=>{
-            if(!r.weight) return '';
-            const x = 40 + (i * (100/(records.length||1)));
-            const h = (r.weight/maxW)*160;
-            return `<div class="chart-bar" style="left:${x}%;height:${h}px;background:linear-gradient(var(--secondary),#55efc4)"></div>
-                    <div class="chart-label" style="left:${x}%">${r.date.slice(5)}</div>
-                    <div class="chart-value" style="left:${x}%;bottom:${h+30}px;color:var(--secondary)">${r.weight}</div>`;
-          }).join('')}
-          <div style="position:absolute;bottom:0;left:0;right:0;height:1px;background:var(--border)"></div>
-        </div>
+        <h4 style="margin-bottom:12px">⚖️ Cân nặng vs WHO</h4>
+        <canvas id="weightChart" style="width:100%;height:280px"></canvas>
       </div></div>
     </div>
     <div class="card" style="margin-top:20px"><div class="card-body">
+      <h4 style="margin-bottom:12px">🧠 Vòng đầu vs WHO</h4>
+      <canvas id="headChart" style="width:100%;height:240px"></canvas>
+    </div></div>
+    ` : ''}
+    <div class="card" style="margin-top:20px"><div class="card-body">
       <h4 style="margin-bottom:12px">📋 Lịch sử đo</h4>
       ${records.length ? `<table style="width:100%;border-collapse:collapse">
-        <tr style="border-bottom:2px solid var(--border)"><th style="text-align:left;padding:8px;font-size:.75rem;color:var(--text2)">Ngày</th><th style="text-align:left;padding:8px;font-size:.75rem;color:var(--text2)">Chiều cao</th><th style="text-align:left;padding:8px;font-size:.75rem;color:var(--text2)">Cân nặng</th><th style="text-align:left;padding:8px;font-size:.75rem;color:var(--text2)">Vòng đầu</th><th></th></tr>
-        ${records.map(r=>`<tr style="border-bottom:1px solid var(--border)">
-          <td style="padding:8px;font-size:.85rem">${r.date}</td>
-          <td style="padding:8px;font-size:.85rem">${r.height?r.height+' cm':'-'}</td>
-          <td style="padding:8px;font-size:.85rem">${r.weight?r.weight+' kg':'-'}</td>
-          <td style="padding:8px;font-size:.85rem">${r.head_circumference?r.head_circumference+' cm':'-'}</td>
-          <td style="padding:8px"><button class="btn-icon" onclick="deleteGrowth(${r.id})">🗑</button></td>
-        </tr>`).join('')}
+        <tr style="border-bottom:2px solid var(--border)">
+          <th style="text-align:left;padding:8px;font-size:.75rem;color:var(--text2)">Ngày</th>
+          <th style="text-align:left;padding:8px;font-size:.75rem;color:var(--text2)">Chiều cao</th>
+          <th style="text-align:left;padding:8px;font-size:.75rem;color:var(--text2)">Cân nặng</th>
+          <th style="text-align:left;padding:8px;font-size:.75rem;color:var(--text2)">Vòng đầu</th>
+          ${whoAvailable ? '<th style="text-align:left;padding:8px;font-size:.75rem;color:var(--text2)">Đánh giá</th>' : ''}
+          <th></th>
+        </tr>
+        ${records.map(r => {
+          const evals = [];
+          if (r.who && r.who.height) evals.push(r.who.height.evaluation.icon);
+          if (r.who && r.who.weight) evals.push(r.who.weight.evaluation.icon);
+          if (r.who && r.who.headCirc) evals.push(r.who.headCirc.evaluation.icon);
+          return `<tr style="border-bottom:1px solid var(--border)">
+            <td style="padding:8px;font-size:.85rem">${r.date}</td>
+            <td style="padding:8px;font-size:.85rem">${r.height ? r.height+' cm' : '-'}</td>
+            <td style="padding:8px;font-size:.85rem">${r.weight ? r.weight+' kg' : '-'}</td>
+            <td style="padding:8px;font-size:.85rem">${r.head_circumference ? r.head_circumference+' cm' : '-'}</td>
+            ${whoAvailable ? `<td style="padding:8px;font-size:.85rem">${evals.join(' ') || '-'}</td>` : ''}
+            <td style="padding:8px"><button class="btn-icon" onclick="deleteGrowth(${r.id})">🗑</button></td>
+          </tr>`;
+        }).join('')}
       </table>` : '<div class="empty"><p>Chưa có dữ liệu nào</p></div>'}
     </div></div>
   `;
+
+  // Draw WHO charts after DOM update
+  if (whoAvailable && whoCurves) {
+    setTimeout(() => {
+      drawWHOChart('heightChart', data, whoCurves.height, 'height', 'cm', kid.birthday, kid.gender);
+      drawWHOChart('weightChart', data, whoCurves.weight, 'weight', 'kg', kid.birthday, kid.gender);
+      drawWHOChart('headChart', data, whoCurves.headCirc, 'head_circumference', 'cm', kid.birthday, kid.gender);
+    }, 50);
+    // Redraw on resize
+    window.addEventListener('resize', () => {
+      drawWHOChart('heightChart', data, whoCurves.height, 'height', 'cm', kid.birthday, kid.gender);
+      drawWHOChart('weightChart', data, whoCurves.weight, 'weight', 'kg', kid.birthday, kid.gender);
+      drawWHOChart('headChart', data, whoCurves.headCirc, 'head_circumference', 'cm', kid.birthday, kid.gender);
+    });
+  }
 }
 
 function showGrowthForm() {
@@ -928,13 +1016,15 @@ async function renderMontessori() {
   const data = await api(`/kids/${state.selectedKid}/montessori`);
   const c = document.getElementById('content');
 
+  if (!data) return;
+
   if (!data.ageMonths && data.ageMonths !== 0) {
     c.innerHTML = '<div class="empty"><div class="icon">🧬</div><p>Cập nhật ngày sinh cho bé để nhận gợi ý Montessori phù hợp!</p></div>';
     return;
   }
 
   const stage = data.currentStage;
-  const catIcons = { 'giác quan':'👁️', 'vận động':'🏃', 'thực tế':'🏠', 'ngôn ngữ':'🗣️', 'toán học':'🔢', 'giác quan':'🎨', 'văn hóa':'🌍', 'khoa học':'🔬', 'xã hội':'👫', 'logic':'🧩' };
+  const catIcons = { 'giác quan':'👁️', 'vận động':'🏃', 'thực tế':'🏠', 'ngôn ngữ':'🗣️', 'toán học':'🔢', 'văn hóa':'🌍', 'khoa học':'🔬', 'xã hội':'👫', 'logic':'🧩' };
 
   c.innerHTML = `
     <!-- Current Stage Hero -->
@@ -949,110 +1039,139 @@ async function renderMontessori() {
       </div>
     </div>
 
-    <div class="grid-2">
-      <!-- Focus Areas -->
-      <div class="card"><div class="card-body">
-        <h4 style="margin-bottom:14px;display:flex;align-items:center;gap:8px">🎯 Bé nên tập trung rèn luyện</h4>
-        ${stage?.focus.map(f => `
-          <div style="display:flex;align-items:flex-start;gap:10px;padding:10px 0;border-bottom:1px solid var(--border)">
-            <span style="color:var(--secondary);font-weight:700;margin-top:2px">✦</span>
-            <span style="font-size:.9rem;line-height:1.5">${f}</span>
-          </div>
-        `).join('') || '<p style="color:var(--text2)">Cập nhật ngày sinh</p>'}
+    <!-- Tabs -->
+    <div class="tabs" style="margin-bottom:0">
+      <div class="tab active" onclick="switchMontessoriTab('overview')" id="mtab-overview">📖 Tổng quan</div>
+      <div class="tab" onclick="switchMontessoriTab('progress')" id="mtab-progress">📊 Tiến độ</div>
+      <div class="tab" onclick="switchMontessoriTab('weekly')" id="mtab-weekly">📅 Kế hoạch tuần</div>
+    </div>
+
+    <!-- Tab: Overview -->
+    <div id="montessori-tab-overview">
+      <div class="grid-2" style="margin-top:20px">
+        <div class="card"><div class="card-body">
+          <h4 style="margin-bottom:14px;display:flex;align-items:center;gap:8px">🎯 Bé nên tập trung rèn luyện</h4>
+          ${stage?.focus.map(f => `
+            <div style="display:flex;align-items:flex-start;gap:10px;padding:10px 0;border-bottom:1px solid var(--border)">
+              <span style="color:var(--secondary);font-weight:700;margin-top:2px">✦</span>
+              <span style="font-size:.9rem;line-height:1.5">${f}</span>
+            </div>
+          `).join('') || '<p style="color:var(--text2)">Cập nhật ngày sinh</p>'}
+        </div></div>
+        <div class="card"><div class="card-body">
+          <h4 style="margin-bottom:14px;display:flex;align-items:center;gap:8px">🏡 Môi trường Montessori gợi ý</h4>
+          ${stage?.environment.map(e => `
+            <div style="display:flex;align-items:flex-start;gap:10px;padding:10px 0;border-bottom:1px solid var(--border)">
+              <span style="color:var(--primary);font-weight:700;margin-top:2px">→</span>
+              <span style="font-size:.9rem;line-height:1.5">${e}</span>
+            </div>
+          `).join('') || '<p style="color:var(--text2)">Cập nhật ngày sinh</p>'}
+        </div></div>
+      </div>
+
+      <div class="card" style="margin-top:20px"><div class="card-body">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px">
+          <h4>💡 Gợi ý hoạt động hôm nay</h4>
+          <button class="btn btn-ghost btn-sm" onclick="renderMontessori()">🔄 Đổi hoạt động khác</button>
+        </div>
+        <div class="grid-3">
+          ${data.dailyActivities.map(a => `
+            <div style="background:var(--bg);border-radius:12px;padding:16px;border:1px solid var(--border)">
+              <div style="font-size:1.5rem;margin-bottom:8px">${a.icon}</div>
+              <div style="font-size:.72rem;color:var(--primary);font-weight:600;text-transform:uppercase;margin-bottom:4px">${a.category}</div>
+              <div style="font-weight:700;font-size:.9rem;margin-bottom:6px">${a.title}</div>
+              <div style="font-size:.8rem;color:var(--text2);line-height:1.5;margin-bottom:8px">${a.desc}</div>
+              <div style="font-size:.72rem;color:var(--text2)">
+                ${a.materials ? `<div>📦 ${a.materials}</div>` : ''}
+                ${a.duration ? `<div>⏱️ ${a.duration}</div>` : ''}
+              </div>
+            </div>
+          `).join('')}
+        </div>
       </div></div>
 
-      <!-- Environment -->
-      <div class="card"><div class="card-body">
-        <h4 style="margin-bottom:14px;display:flex;align-items:center;gap:8px">🏡 Môi trường Montessori gợi ý</h4>
-        ${stage?.environment.map(e => `
+      ${data.parentTips.length ? `
+      <div class="card" style="margin-top:20px"><div class="card-body">
+        <h4 style="margin-bottom:14px;display:flex;align-items:center;gap:8px">💬 Lời khuyên cho bố mẹ</h4>
+        ${data.parentTips.map(t => `
           <div style="display:flex;align-items:flex-start;gap:10px;padding:10px 0;border-bottom:1px solid var(--border)">
-            <span style="color:var(--primary);font-weight:700;margin-top:2px">→</span>
-            <span style="font-size:.9rem;line-height:1.5">${e}</span>
+            <span style="color:var(--accent);font-size:1.1rem">💡</span>
+            <span style="font-size:.9rem;line-height:1.6">${t}</span>
           </div>
-        `).join('') || '<p style="color:var(--text2)">Cập nhật ngày sinh</p>'}
+        `).join('')}
+      </div></div>` : ''}
+
+      ${data.upcomingStages.length ? `
+      <div class="card" style="margin-top:20px"><div class="card-body">
+        <h4 style="margin-bottom:14px;display:flex;align-items:center;gap:8px">🗺️ Lộ trình phát triển sắp tới</h4>
+        <div style="position:relative;padding-left:28px">
+          <div style="position:absolute;left:8px;top:0;bottom:0;width:2px;background:var(--border)"></div>
+          ${data.upcomingStages.map((s, i) => `
+            <div style="position:relative;margin-bottom:20px;padding-left:12px">
+              <div style="position:absolute;left:-24px;top:4px;width:16px;height:16px;border-radius:50%;background:${i===0?'var(--primary)':'var(--border)'};border:3px solid var(--bg)"></div>
+              <div style="font-size:.72rem;color:var(--text2);font-weight:500">${s.ageRange[0]}-${s.ageRange[1]} tháng</div>
+              <div style="font-weight:700;font-size:.95rem;margin-top:2px">${s.title}</div>
+              <div style="font-size:.82rem;color:var(--text2);margin-top:2px">${s.subtitle}</div>
+              <div style="font-size:.8rem;color:var(--text2);margin-top:6px;line-height:1.5">
+                ${s.focus.slice(0, 3).map(f => `<div>• ${f}</div>`).join('')}
+              </div>
+            </div>
+          `).join('')}
+        </div>
+      </div></div>` : ''}
+
+      <div class="card" style="margin-top:20px"><div class="card-body">
+        <h4 style="margin-bottom:14px">📚 Tất cả hoạt động phù hợp (${data.allActivities.length} hoạt động)</h4>
+        <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:12px">
+          <button class="btn btn-sm btn-primary montessori-filter" onclick="filterActivities('all')">Tất cả</button>
+          ${[...new Set(data.allActivities.map(a=>a.category))].map(cat => `
+            <button class="btn btn-sm btn-ghost montessori-filter" onclick="filterActivities('${cat}')">${catIcons[cat]||'📌'} ${cat}</button>
+          `).join('')}
+        </div>
+        <div id="activitiesList">
+          ${data.allActivities.map(a => `
+            <div class="montessori-act" data-cat="${a.category}" style="display:flex;gap:14px;padding:12px 0;border-bottom:1px solid var(--border);align-items:flex-start">
+              <span style="font-size:1.4rem">${a.icon}</span>
+              <div style="flex:1">
+                <div style="font-weight:600;font-size:.9rem">${a.title}</div>
+                <div style="font-size:.8rem;color:var(--text2);line-height:1.5;margin-top:3px">${a.desc}</div>
+                <div style="display:flex;gap:12px;margin-top:6px;font-size:.72rem;color:var(--text2)">
+                  ${a.materials ? `<span>📦 ${a.materials}</span>` : ''}
+                  ${a.duration ? `<span>⏱️ ${a.duration}</span>` : ''}
+                </div>
+              </div>
+            </div>
+          `).join('')}
+        </div>
       </div></div>
     </div>
 
-    <!-- Daily Suggestions -->
-    <div class="card" style="margin-top:20px"><div class="card-body">
-      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px">
-        <h4>💡 Gợi ý hoạt động hôm nay</h4>
-        <button class="btn btn-ghost btn-sm" onclick="renderMontessori()">🔄 Đổi hoạt động khác</button>
-      </div>
-      <div class="grid-3">
-        ${data.dailyActivities.map(a => `
-          <div style="background:var(--bg);border-radius:12px;padding:16px;border:1px solid var(--border)">
-            <div style="font-size:1.5rem;margin-bottom:8px">${a.icon}</div>
-            <div style="font-size:.72rem;color:var(--primary);font-weight:600;text-transform:uppercase;margin-bottom:4px">${a.category}</div>
-            <div style="font-weight:700;font-size:.9rem;margin-bottom:6px">${a.title}</div>
-            <div style="font-size:.8rem;color:var(--text2);line-height:1.5;margin-bottom:8px">${a.desc}</div>
-            <div style="font-size:.72rem;color:var(--text2)">
-              ${a.materials ? `<div>📦 ${a.materials}</div>` : ''}
-              ${a.duration ? `<div>⏱️ ${a.duration}</div>` : ''}
-            </div>
-          </div>
-        `).join('')}
-      </div>
-    </div></div>
+    <!-- Tab: Progress -->
+    <div id="montessori-tab-progress" style="display:none">
+      <div class="card" style="margin-top:20px"><div class="card-body" id="montessori-progress-content">
+        <div style="text-align:center;padding:20px;color:var(--text2)">Đang tải...</div>
+      </div></div>
+    </div>
 
-    <!-- Parent Tips -->
-    ${data.parentTips.length ? `
-    <div class="card" style="margin-top:20px"><div class="card-body">
-      <h4 style="margin-bottom:14px;display:flex;align-items:center;gap:8px">💬 Lời khuyên cho bố mẹ</h4>
-      ${data.parentTips.map(t => `
-        <div style="display:flex;align-items:flex-start;gap:10px;padding:10px 0;border-bottom:1px solid var(--border)">
-          <span style="color:var(--accent);font-size:1.1rem">💡</span>
-          <span style="font-size:.9rem;line-height:1.6">${t}</span>
-        </div>
-      `).join('')}
-    </div></div>` : ''}
-
-    <!-- Upcoming Roadmap -->
-    ${data.upcomingStages.length ? `
-    <div class="card" style="margin-top:20px"><div class="card-body">
-      <h4 style="margin-bottom:14px;display:flex;align-items:center;gap:8px">🗺️ Lộ trình phát triển sắp tới</h4>
-      <div style="position:relative;padding-left:28px">
-        <div style="position:absolute;left:8px;top:0;bottom:0;width:2px;background:var(--border)"></div>
-        ${data.upcomingStages.map((s, i) => `
-          <div style="position:relative;margin-bottom:20px;padding-left:12px">
-            <div style="position:absolute;left:-24px;top:4px;width:16px;height:16px;border-radius:50%;background:${i===0?'var(--primary)':'var(--border)'};border:3px solid var(--bg)"></div>
-            <div style="font-size:.72rem;color:var(--text2);font-weight:500">${s.ageRange[0]}-${s.ageRange[1]} tháng</div>
-            <div style="font-weight:700;font-size:.95rem;margin-top:2px">${s.title}</div>
-            <div style="font-size:.82rem;color:var(--text2);margin-top:2px">${s.subtitle}</div>
-            <div style="font-size:.8rem;color:var(--text2);margin-top:6px;line-height:1.5">
-              ${s.focus.slice(0, 3).map(f => `<div>• ${f}</div>`).join('')}
-            </div>
-          </div>
-        `).join('')}
-      </div>
-    </div></div>` : ''}
-
-    <!-- All Activities -->
-    <div class="card" style="margin-top:20px"><div class="card-body">
-      <h4 style="margin-bottom:14px">📚 Tất cả hoạt động phù hợp (${data.allActivities.length} hoạt động)</h4>
-      <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:12px">
-        <button class="btn btn-sm btn-primary montessori-filter" onclick="filterActivities('all')">Tất cả</button>
-        ${[...new Set(data.allActivities.map(a=>a.category))].map(cat => `
-          <button class="btn btn-sm btn-ghost montessori-filter" onclick="filterActivities('${cat}')">${catIcons[cat]||'📌'} ${cat}</button>
-        `).join('')}
-      </div>
-      <div id="activitiesList">
-        ${data.allActivities.map(a => `
-          <div class="montessori-act" data-cat="${a.category}" style="display:flex;gap:14px;padding:12px 0;border-bottom:1px solid var(--border);align-items:flex-start">
-            <span style="font-size:1.4rem">${a.icon}</span>
-            <div style="flex:1">
-              <div style="font-weight:600;font-size:.9rem">${a.title}</div>
-              <div style="font-size:.8rem;color:var(--text2);line-height:1.5;margin-top:3px">${a.desc}</div>
-              <div style="display:flex;gap:12px;margin-top:6px;font-size:.72rem;color:var(--text2)">
-                ${a.materials ? `<span>📦 ${a.materials}</span>` : ''}
-                ${a.duration ? `<span>⏱️ ${a.duration}</span>` : ''}
-              </div>
-            </div>
-          </div>
-        `).join('')}
-      </div>
-    </div></div>
+    <!-- Tab: Weekly Plan -->
+    <div id="montessori-tab-weekly" style="display:none">
+      <div class="card" style="margin-top:20px"><div class="card-body" id="weekly-plan-content">
+        <div style="text-align:center;padding:20px;color:var(--text2)">Đang tải...</div>
+      </div></div>
+    </div>
   `;
+
+  renderMontessoriProgress();
+  renderWeeklyPlan();
+}
+
+function switchMontessoriTab(tab) {
+  ['overview','progress','weekly'].forEach(t => {
+    const el = document.getElementById('montessori-tab-' + t);
+    const tabEl = document.getElementById('mtab-' + t);
+    if (el) el.style.display = t === tab ? '' : 'none';
+    if (tabEl) tabEl.classList.toggle('active', t === tab);
+  });
 }
 
 function filterActivities(cat) {
@@ -1060,10 +1179,11 @@ function filterActivities(cat) {
     el.style.display = (cat === 'all' || el.dataset.cat === cat) ? 'flex' : 'none';
   });
   document.querySelectorAll('.montessori-filter').forEach(btn => {
-    btn.className = 'btn btn-sm ' + (btn.textContent.includes(cat) || (cat==='all' && btn.textContent.includes('Tất cả')) ? 'btn-primary' : 'btn-ghost') + ' montessori-filter';
+    const isAll = cat === 'all' && btn.textContent.includes('Tất cả');
+    const isMatch = btn.textContent.toLowerCase().includes(cat.replace('_',' '));
+    btn.className = 'btn btn-sm ' + (isAll || isMatch ? 'btn-primary' : 'btn-ghost') + ' montessori-filter';
   });
 }
-
 // ============ PROFILE ============
 async function renderProfile() {
   if (!state.selectedKid) return renderNoKid();
@@ -1172,8 +1292,558 @@ function calcAge(b) {
   return y>0?`${y} tuổi ${m} tháng`:`${m} tháng`;
 }
 
-// Init
-loadKids().then(()=>render());
+// ============ AUTH ============
+function saveAuth(token, user) {
+  state.token = token;
+  state.user = user;
+  localStorage.setItem('kj_token', token);
+  localStorage.setItem('kj_user', JSON.stringify(user));
+}
+
+function logout() {
+  state.token = null;
+  state.user = null;
+  localStorage.removeItem('kj_token');
+  localStorage.removeItem('kj_user');
+  renderLogin();
+}
+
+async function checkAuth() {
+  const token = localStorage.getItem('kj_token');
+  const user = localStorage.getItem('kj_user');
+  if (token && user) {
+    state.token = token;
+    state.user = JSON.parse(user);
+    // Try to refresh token
+    try {
+      const r = await fetch('/api/auth/refresh', {
+        method: 'POST',
+        headers: {'Content-Type':'application/json'},
+        body: JSON.stringify({ token })
+      });
+      if (r.ok) {
+        const data = await r.json();
+        saveAuth(data.token, data.user);
+        return true;
+      }
+    } catch(e) {}
+    // Token might still be valid
+    return true;
+  }
+  return false;
+}
+
+async function renderLogin() {
+  // Check if setup is needed
+  let needsSetup = false;
+  try {
+    const r = await fetch('/api/auth/status');
+    const data = await r.json();
+    needsSetup = data.needsSetup;
+  } catch(e) {}
+
+  if (needsSetup) {
+    renderSetup();
+  } else {
+    renderLoginScreen();
+  }
+}
+
+function renderSetup() {
+  document.querySelector('.sidebar').style.display = 'none';
+  document.querySelector('.main').style.marginLeft = '0';
+  document.querySelector('.bottom-nav').style.display = 'none';
+  document.querySelector('.menu-toggle').style.display = 'none';
+  document.getElementById('pageTitle').textContent = '';
+  document.getElementById('kidSelector').innerHTML = '';
+  document.getElementById('content').innerHTML = `
+    <div style="display:flex;align-items:center;justify-content:center;min-height:80vh">
+      <div style="max-width:420px;width:100%;padding:20px">
+        <div style="text-align:center;margin-bottom:32px">
+          <div style="font-size:3.5rem;margin-bottom:12px">🌱</div>
+          <h1 style="font-size:1.6rem;font-weight:800;margin-bottom:6px">Chào mừng đến Kid Journey!</h1>
+          <p style="color:var(--text2);font-size:.9rem">Thiết lập tài khoản đầu tiên</p>
+        </div>
+        <div class="card"><div class="card-body" style="padding:28px">
+          <div class="form-group"><label>Tên hiển thị *</label><input id="setup-display" placeholder="Bố Đức, Mẹ Hà..." style="font-size:1rem;padding:14px"></div>
+          <div class="form-group"><label>Tên đăng nhập *</label><input id="setup-username" placeholder="ba, me..." style="font-size:1rem;padding:14px"></div>
+          <div class="form-group"><label>PIN (4-6 chữ số) *</label><input id="setup-pin" type="password" inputmode="numeric" pattern="[0-9]*" maxlength="6" placeholder="••••" style="font-size:1.4rem;padding:14px;text-align:center;letter-spacing:12px"></div>
+          <div id="setup-error" style="color:var(--danger);font-size:.85rem;text-align:center;margin-bottom:12px;display:none"></div>
+          <button class="btn btn-primary" style="width:100%;padding:14px;font-size:1rem;border-radius:12px" onclick="doSetup()">🚀 Bắt đầu</button>
+        </div></div>
+      </div>
+    </div>
+  `;
+}
+
+async function doSetup() {
+  const display_name = document.getElementById('setup-display').value.trim();
+  const username = document.getElementById('setup-username').value.trim();
+  const pin = document.getElementById('setup-pin').value.trim();
+  const errEl = document.getElementById('setup-error');
+
+  if (!display_name || !username || !pin) {
+    errEl.textContent = 'Vui lòng nhập đầy đủ thông tin'; errEl.style.display = 'block'; return;
+  }
+  if (!/^\d{4,6}$/.test(pin)) {
+    errEl.textContent = 'PIN phải là 4-6 chữ số'; errEl.style.display = 'block'; return;
+  }
+
+  try {
+    const r = await fetch('/api/auth/setup', {
+      method: 'POST',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({ username, display_name, pin })
+    });
+    const data = await r.json();
+    if (!r.ok) { errEl.textContent = data.error || 'Lỗi thiết lập'; errEl.style.display = 'block'; return; }
+    saveAuth(data.token, data.user);
+    toast('🎉 Thiết lập thành công!');
+    showApp();
+  } catch(e) {
+    errEl.textContent = 'Lỗi kết nối server'; errEl.style.display = 'block';
+  }
+}
+
+function renderLoginScreen() {
+  document.querySelector('.sidebar').style.display = 'none';
+  document.querySelector('.main').style.marginLeft = '0';
+  document.querySelector('.bottom-nav').style.display = 'none';
+  document.querySelector('.menu-toggle').style.display = 'none';
+  document.getElementById('pageTitle').textContent = '';
+  document.getElementById('kidSelector').innerHTML = '';
+
+  // Load users list
+  fetch('/api/auth/status').then(r=>r.json()).then(async () => {
+    // We need users list — fetch from a public endpoint or use login directly
+    document.getElementById('content').innerHTML = `
+      <div style="display:flex;align-items:center;justify-content:center;min-height:80vh">
+        <div style="max-width:400px;width:100%;padding:20px">
+          <div style="text-align:center;margin-bottom:32px">
+            <div style="font-size:3.5rem;margin-bottom:12px">🌱</div>
+            <h1 style="font-size:1.5rem;font-weight:800">Kid Journey</h1>
+            <p style="color:var(--text2);font-size:.9rem;margin-top:4px">Đăng nhập để tiếp tục</p>
+          </div>
+          <div class="card"><div class="card-body" style="padding:28px">
+            <div class="form-group"><label>Tên đăng nhập</label><input id="login-username" placeholder="ba, me..." style="font-size:1rem;padding:14px" autocomplete="username"></div>
+            <div class="form-group"><label>PIN</label>
+              <div id="pin-display" style="display:flex;justify-content:center;gap:12px;margin-bottom:16px">
+                <div class="pin-dot"></div><div class="pin-dot"></div><div class="pin-dot"></div><div class="pin-dot"></div>
+              </div>
+              <input id="login-pin" type="password" inputmode="numeric" pattern="[0-9]*" maxlength="6" style="position:absolute;opacity:0;pointer-events:none">
+              <div id="pin-pad" style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;max-width:260px;margin:0 auto">
+                ${[1,2,3,4,5,6,7,8,9,'⌫',0,'✓'].map(k => {
+                  const cls = k === '✓' ? 'btn-primary' : (k === '⌫' ? 'btn-ghost' : '');
+                  const action = k === '⌫' ? 'pinBackspace()' : (k === '✓' ? 'doLogin()' : `pinDigit('${k}')`);
+                  return `<button class="btn ${cls}" style="padding:16px;font-size:1.2rem;border-radius:12px" onclick="${action}">${k}</button>`;
+                }).join('')}
+              </div>
+            </div>
+            <div id="login-error" style="color:var(--danger);font-size:.85rem;text-align:center;margin-top:12px;display:none"></div>
+          </div></div>
+        </div>
+      </div>
+      <style>
+        .pin-dot{width:16px;height:16px;border-radius:50%;border:2px solid var(--border);transition:all .2s}
+        .pin-dot.filled{background:var(--primary);border-color:var(--primary)}
+      </style>
+    `;
+    // Focus username
+    setTimeout(() => document.getElementById('login-username').focus(), 100);
+  });
+}
+
+let pinValue = '';
+function pinDigit(d) {
+  if (pinValue.length >= 6) return;
+  pinValue += d;
+  updatePinDots();
+  if (pinValue.length >= 4) {
+    // Auto-submit after 4-6 digits (small delay)
+    setTimeout(() => { if (pinValue.length >= 4 && pinValue.length <= 6) doLogin(); }, 300);
+  }
+}
+function pinBackspace() {
+  pinValue = pinValue.slice(0, -1);
+  updatePinDots();
+  document.getElementById('login-error').style.display = 'none';
+}
+function updatePinDots() {
+  const dots = document.querySelectorAll('.pin-dot');
+  dots.forEach((d, i) => d.classList.toggle('filled', i < pinValue.length));
+}
+
+async function doLogin() {
+  const username = document.getElementById('login-username').value.trim();
+  const pin = pinValue;
+  const errEl = document.getElementById('login-error');
+
+  if (!username) { errEl.textContent = 'Nhập tên đăng nhập'; errEl.style.display = 'block'; return; }
+  if (pin.length < 4) { errEl.textContent = 'Nhập đủ PIN'; errEl.style.display = 'block'; return; }
+
+  try {
+    const r = await fetch('/api/auth/login', {
+      method: 'POST',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({ username, pin })
+    });
+    const data = await r.json();
+    if (!r.ok) {
+      errEl.textContent = data.error || 'Sai PIN';
+      errEl.style.display = 'block';
+      pinValue = '';
+      updatePinDots();
+      return;
+    }
+    saveAuth(data.token, data.user);
+    toast(`👋 Xin chào ${data.user.display_name}!`);
+    showApp();
+  } catch(e) {
+    errEl.textContent = 'Lỗi kết nối server';
+    errEl.style.display = 'block';
+    pinValue = '';
+    updatePinDots();
+  }
+}
+
+function showApp() {
+  // Restore sidebar and nav
+  document.querySelector('.sidebar').style.display = '';
+  document.querySelector('.main').style.marginLeft = '';
+  document.querySelector('.bottom-nav').style.display = '';
+  document.querySelector('.menu-toggle').style.display = '';
+  // Show user info in sidebar footer
+  const footer = document.querySelector('.sidebar-footer');
+  if (state.user) {
+    footer.innerHTML = `
+      <div style="margin-bottom:6px;font-size:.8rem;opacity:.8">${state.user.display_name}</div>
+      <button onclick="logout()" style="background:rgba(255,255,255,.15);border:none;color:rgba(255,255,255,.6);padding:4px 12px;border-radius:6px;font-size:.7rem;cursor:pointer">Đăng xuất</button>
+    `;
+  }
+  loadKids().then(() => render());
+}
+
+// WHO Growth Chart (Canvas-based)
+function drawWHOChart(canvasId, data, whoCurves, field, unit, kidBirthday, kidGender) {
+  const canvas = document.getElementById(canvasId);
+  if (!canvas) return;
+  const ctx = canvas.getContext('2d');
+  const dpr = window.devicePixelRatio || 1;
+  const rect = canvas.getBoundingClientRect();
+  canvas.width = rect.width * dpr;
+  canvas.height = rect.height * dpr;
+  ctx.scale(dpr, dpr);
+  const W = rect.width, H = rect.height;
+  const pad = { top: 20, right: 20, bottom: 40, left: 50 };
+  const plotW = W - pad.left - pad.right;
+  const plotH = H - pad.top - pad.bottom;
+
+  // Filter records with valid data
+  const records = data.records.filter(r => r[field] && r.ageMonths !== null);
+  if (!records.length && !whoCurves) return;
+
+  // Calculate age range
+  const allAges = records.map(r => r.ageMonths);
+  const curveAges = whoCurves && whoCurves['0'] ? whoCurves['0'].map(p => p.age) : [];
+  const ages = [...allAges, ...curveAges];
+  if (!ages.length) return;
+
+  const minAge = Math.max(0, Math.min(...ages) - 2);
+  const maxAge = Math.max(...ages) + 2;
+
+  // Calculate value range
+  const allValues = records.map(r => r[field]);
+  const curveValues = [];
+  if (whoCurves) {
+    for (const sd of ['-3','3']) {
+      if (whoCurves[sd]) whoCurves[sd].forEach(p => curveValues.push(p.value));
+    }
+  }
+  const allV = [...allValues, ...curveValues];
+  const minVal = Math.min(...allV) * 0.9;
+  const maxVal = Math.max(...allV) * 1.05;
+
+  // Scale functions
+  const xScale = (age) => pad.left + ((age - minAge) / (maxAge - minAge)) * plotW;
+  const yScale = (val) => pad.top + plotH - ((val - minVal) / (maxVal - minVal)) * plotH;
+
+  // Clear
+  ctx.clearRect(0, 0, W, H);
+
+  // Grid lines
+  ctx.strokeStyle = '#f0ece6';
+  ctx.lineWidth = 0.5;
+  for (let i = 0; i <= 5; i++) {
+    const y = pad.top + (plotH / 5) * i;
+    ctx.beginPath(); ctx.moveTo(pad.left, y); ctx.lineTo(W - pad.right, y); ctx.stroke();
+  }
+
+  // WHO curves
+  if (whoCurves) {
+    const sdColors = {
+      '-3': '#e74c3c', '-2': '#e67e22', '-1': '#f39c12',
+      '0': '#27ae60', '1': '#f39c12', '2': '#e67e22', '3': '#e74c3c'
+    };
+    const sdLabels = { '-3': '-3SD', '-2': '-2SD', '-1': '-1SD', '0': 'Median', '1': '+1SD', '2': '+2SD', '3': '+3SD' };
+
+    for (const sd of ['-3','-2','-1','0','1','2','3']) {
+      const points = whoCurves[sd];
+      if (!points || !points.length) continue;
+      ctx.beginPath();
+      ctx.strokeStyle = sdColors[sd];
+      ctx.lineWidth = sd === '0' ? 2.5 : 1.2;
+      ctx.globalAlpha = sd === '0' ? 1 : 0.5;
+      if (sd !== '0') ctx.setLineDash([4, 4]);
+
+      points.forEach((p, i) => {
+        const x = xScale(p.age);
+        const y = yScale(p.value);
+        if (i === 0) ctx.moveTo(x, y);
+        else ctx.lineTo(x, y);
+      });
+      ctx.stroke();
+      ctx.setLineDash([]);
+      ctx.globalAlpha = 1;
+
+      // Label at end
+      const last = points[points.length - 1];
+      if (last) {
+        ctx.fillStyle = sdColors[sd];
+        ctx.font = '10px system-ui';
+        ctx.globalAlpha = 0.7;
+        ctx.fillText(sdLabels[sd], xScale(last.age) + 4, yScale(last.value) + 3);
+        ctx.globalAlpha = 1;
+      }
+    }
+  }
+
+  // Data points
+  ctx.fillStyle = '#6c5ce7';
+  ctx.strokeStyle = '#fff';
+  ctx.lineWidth = 2;
+  records.forEach(r => {
+    const x = xScale(r.ageMonths);
+    const y = yScale(r[field]);
+    ctx.beginPath();
+    ctx.arc(x, y, 5, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.stroke();
+  });
+
+  // Connect data points with line
+  if (records.length > 1) {
+    ctx.beginPath();
+    ctx.strokeStyle = '#6c5ce7';
+    ctx.lineWidth = 2;
+    ctx.globalAlpha = 0.6;
+    records.forEach((r, i) => {
+      const x = xScale(r.ageMonths);
+      const y = yScale(r[field]);
+      if (i === 0) ctx.moveTo(x, y);
+      else ctx.lineTo(x, y);
+    });
+    ctx.stroke();
+    ctx.globalAlpha = 1;
+  }
+
+  // Axes labels
+  ctx.fillStyle = '#636e72';
+  ctx.font = '10px system-ui';
+  ctx.textAlign = 'center';
+  // X axis: age months
+  for (let age = Math.ceil(minAge); age <= maxAge; age += Math.max(1, Math.floor((maxAge - minAge) / 8))) {
+    const x = xScale(age);
+    ctx.fillText(age + 'th', x, H - pad.bottom + 16);
+  }
+  // Y axis: values
+  ctx.textAlign = 'right';
+  for (let i = 0; i <= 5; i++) {
+    const val = minVal + ((maxVal - minVal) / 5) * (5 - i);
+    const y = pad.top + (plotH / 5) * i;
+    ctx.fillText(val.toFixed(1), pad.left - 8, y + 3);
+  }
+
+  // Unit label
+  ctx.fillStyle = '#636e72';
+  ctx.font = '11px system-ui';
+  ctx.textAlign = 'left';
+  ctx.fillText(unit, pad.left, pad.top - 6);
+}
+
+// Montessori Progress Helper
+async function updateMontessoriProgress(activityKey, status, notes) {
+  const fd = new FormData();
+  fd.append('activity_key', activityKey);
+  fd.append('status', status);
+  if (notes) fd.append('notes', notes);
+  // Check for evidence photo input
+  const photoInput = document.getElementById('evidence-photo');
+  if (photoInput && photoInput.files[0]) {
+    fd.append('evidence', photoInput.files[0]);
+  }
+  await apiUpload(`/kids/${state.selectedKid}/montessori/progress`, fd);
+  toast(status === 'completed' ? '✅ Đã hoàn thành!' : status === 'in_progress' ? '🔄 Đang thực hiện!' : '📋 Đã cập nhật');
+  renderMontessoriProgress();
+}
+
+async function renderMontessoriProgress() {
+  if (!state.selectedKid) return;
+  const kid = await api(`/kids/${state.selectedKid}`);
+  if (!kid || !kid.birthday) return;
+
+  const progress = await api(`/kids/${state.selectedKid}/montessori/progress`);
+  if (!progress) return;
+
+  const c = document.getElementById('montessori-progress-content');
+  if (!c) return;
+
+  const { activities, stats, percentage } = progress;
+
+  c.innerHTML = `
+    <!-- Progress Bar -->
+    <div style="margin-bottom:20px">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+        <span style="font-size:.85rem;font-weight:600">Tiến độ hoàn thành</span>
+        <span style="font-size:.85rem;font-weight:700;color:var(--primary)">${percentage}%</span>
+      </div>
+      <div style="background:var(--border);border-radius:8px;height:12px;overflow:hidden">
+        <div style="background:linear-gradient(90deg,var(--primary),var(--secondary));height:100%;width:${percentage}%;border-radius:8px;transition:width .5s"></div>
+      </div>
+      <div style="display:flex;justify-content:space-between;margin-top:6px;font-size:.75rem;color:var(--text2)">
+        <span>✅ ${stats.completed} hoàn thành</span>
+        <span>🔄 ${stats.inProgress} đang làm</span>
+        <span>📋 ${stats.notStarted} chưa bắt đầu</span>
+      </div>
+    </div>
+
+    <!-- Activity List with Progress -->
+    <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:14px">
+      <button class="btn btn-sm btn-primary progress-filter" onclick="filterProgress('all')">Tất cả</button>
+      <button class="btn btn-sm btn-ghost progress-filter" onclick="filterProgress('not_started')">📋 Chưa bắt đầu</button>
+      <button class="btn btn-sm btn-ghost progress-filter" onclick="filterProgress('in_progress')">🔄 Đang làm</button>
+      <button class="btn btn-sm btn-ghost progress-filter" onclick="filterProgress('completed')">✅ Hoàn thành</button>
+    </div>
+    <div id="progressList">
+      ${activities.map(a => {
+        const statusColor = a.progress.status === 'completed' ? 'var(--secondary)' : a.progress.status === 'in_progress' ? 'var(--accent)' : 'var(--border)';
+        const statusIcon = a.progress.status === 'completed' ? '✅' : a.progress.status === 'in_progress' ? '🔄' : '⬜';
+        return `
+          <div class="progress-act" data-status="${a.progress.status}" style="display:flex;gap:14px;padding:14px 0;border-bottom:1px solid var(--border);align-items:flex-start">
+            <div style="font-size:1.4rem">${a.icon}</div>
+            <div style="flex:1">
+              <div style="display:flex;align-items:center;gap:8px">
+                <span style="font-weight:600;font-size:.9rem">${a.title}</span>
+                <span style="font-size:.7rem;padding:2px 8px;border-radius:6px;background:${statusColor}22;color:${statusColor};font-weight:600">${a.progress.status === 'completed' ? 'Hoàn thành' : a.progress.status === 'in_progress' ? 'Đang làm' : 'Chưa bắt đầu'}</span>
+              </div>
+              <div style="font-size:.8rem;color:var(--text2);line-height:1.5;margin-top:3px">${a.desc}</div>
+              <div style="display:flex;gap:12px;margin-top:6px;font-size:.72rem;color:var(--text2)">
+                ${a.materials ? `<span>📦 ${a.materials}</span>` : ''}
+                ${a.duration ? `<span>⏱️ ${a.duration}</span>` : ''}
+              </div>
+              ${a.progress.notes ? `<div style="font-size:.8rem;color:var(--primary);margin-top:4px">📝 ${a.progress.notes}</div>` : ''}
+              ${a.progress.evidence_photo ? `<div style="margin-top:4px"><img src="/uploads/${a.progress.evidence_photo}" style="width:60px;height:60px;object-fit:cover;border-radius:8px;border:1px solid var(--border)"></div>` : ''}
+              <div style="display:flex;gap:6px;margin-top:8px">
+                ${a.progress.status !== 'completed' ? `<button class="btn btn-sm btn-secondary" onclick="showProgressForm('${a.key}','${a.title}','${a.progress.status}')">${a.progress.status === 'not_started' ? '▶️ Bắt đầu' : '✅ Hoàn thành'}</button>` : ''}
+                ${a.progress.status === 'completed' ? `<button class="btn btn-sm btn-ghost" onclick="showProgressForm('${a.key}','${a.title}','${a.progress.status}')">✏️ Sửa</button>` : ''}
+              </div>
+            </div>
+          </div>
+        `;
+      }).join('')}
+    </div>
+  `;
+}
+
+function filterProgress(status) {
+  document.querySelectorAll('.progress-act').forEach(el => {
+    el.style.display = (status === 'all' || el.dataset.status === status) ? 'flex' : 'none';
+  });
+  document.querySelectorAll('.progress-filter').forEach(btn => {
+    const isAll = status === 'all' && btn.textContent.includes('Tất cả');
+    const isMatch = btn.textContent.toLowerCase().includes(status.replace('_',' '));
+    btn.className = 'btn btn-sm ' + (isAll || isMatch ? 'btn-primary' : 'btn-ghost') + ' progress-filter';
+  });
+}
+
+function showProgressForm(key, title, currentStatus) {
+  const nextStatus = currentStatus === 'not_started' ? 'in_progress' : 'completed';
+  openModal(`Cập nhật: ${title}`, `
+    <div class="form-group">
+      <label>Trạng thái</label>
+      <select id="prog-status">
+        <option value="not_started" ${nextStatus==='not_started'?'selected':''}>📋 Chưa bắt đầu</option>
+        <option value="in_progress" ${nextStatus==='in_progress'?'selected':''}>🔄 Đang thực hiện</option>
+        <option value="completed" ${nextStatus==='completed'?'selected':''}>✅ Hoàn thành</option>
+      </select>
+    </div>
+    <div class="form-group"><label>Ghi chú</label><textarea id="prog-notes" rows="3" placeholder="Ghi chú về hoạt động..."></textarea></div>
+    <div class="form-group"><label>Ảnh minh chứng</label><input type="file" id="evidence-photo" accept="image/*"></div>
+  `, `<button class="btn btn-ghost" onclick="closeModal()">Hủy</button><button class="btn btn-primary" onclick="submitProgress('${key}')">💾 Lưu</button>`);
+}
+
+async function submitProgress(key) {
+  const status = document.getElementById('prog-status').value;
+  const notes = document.getElementById('prog-notes').value.trim();
+  await updateMontessoriProgress(key, status, notes);
+  closeModal();
+}
+
+// Weekly Plan
+async function generateWeeklyPlan() {
+  if (!state.selectedKid) return;
+  await api(`/kids/${state.selectedKid}/montessori/weekly-plan`, { method: 'POST', body: {} });
+  toast('📅 Đã tạo kế hoạch tuần!');
+  renderWeeklyPlan();
+}
+
+async function renderWeeklyPlan() {
+  if (!state.selectedKid) return;
+  const data = await api(`/kids/${state.selectedKid}/montessori/weekly-plan`);
+  if (!data) return;
+
+  const c = document.getElementById('weekly-plan-content');
+  if (!c) return;
+
+  if (!data.plans || data.plans.length === 0) {
+    c.innerHTML = `
+      <div style="text-align:center;padding:24px">
+        <div style="font-size:2rem;margin-bottom:8px">📅</div>
+        <p style="color:var(--text2);font-size:.9rem;margin-bottom:12px">Chưa có kế hoạch tuần này</p>
+        <button class="btn btn-primary" onclick="generateWeeklyPlan()">🔄 Tạo kế hoạch tự động</button>
+      </div>
+    `;
+    return;
+  }
+
+  const days = { mon:'Thứ 2', tue:'Thứ 3', wed:'Thứ 4', thu:'Thứ 5', fri:'Thứ 6', sat:'Thứ 7', sun:'CN' };
+  c.innerHTML = `
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">
+      <div style="font-size:.8rem;color:var(--text2)">Tuần bắt đầu: ${data.weekStart}</div>
+      <button class="btn btn-sm btn-ghost" onclick="generateWeeklyPlan()">🔄 Tạo lại</button>
+    </div>
+    ${data.plans.map(p => `
+      <div style="display:flex;align-items:center;gap:12px;padding:10px 12px;border-bottom:1px solid var(--border)">
+        <div style="font-size:.75rem;font-weight:600;color:var(--primary);min-width:50px">${days[p.planned_day] || p.planned_day}</div>
+        <span style="font-size:1.1rem">${p.icon || '📌'}</span>
+        <div style="flex:1">
+          <div style="font-weight:600;font-size:.85rem">${p.title || p.activity_key}</div>
+          <div style="font-size:.72rem;color:var(--text2)">${p.category || ''} ${p.duration ? '· '+p.duration : ''}</div>
+        </div>
+        <span style="font-size:.7rem;padding:2px 8px;border-radius:6px;background:${p.status==='done'?'var(--secondary)':'var(--border)'}22;color:${p.status==='done'?'var(--secondary)':'var(--text2)'}">${p.status==='done'?'✅':'📋'}</span>
+      </div>
+    `).join('')}
+  `;
+}
+
+// Init — check auth first
+(async () => {
+  const authenticated = await checkAuth();
+  if (authenticated) {
+    showApp();
+  } else {
+    renderLogin();
+  }
+})();
 </script>
 </body>
 </html>
