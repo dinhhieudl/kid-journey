@@ -20,7 +20,8 @@ COPY package*.json ./
 # Copy source
 COPY src/ ./src/
 COPY montessori.js ./
-COPY data/who-lms-data.json ./data/who-lms-data.json
+COPY scripts/ ./scripts/
+RUN mkdir -p data && node scripts/prepare-who-data.js "" data/who-lms-data.json
 COPY public/ ./public/
 
 # Create data dirs
