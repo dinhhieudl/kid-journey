@@ -1,13 +1,18 @@
-version: '3.8'
-
 services:
   kid-journey:
     build: .
-    container_name: kid-journey-app
+    container_name: kid-journey
     restart: unless-stopped
     ports:
-      - "3107:3107"
+      - "${PORT:-3107}:3107"
     volumes:
       - ./data:/app/data
     environment:
-      - TZ=Asia/Ho_Chi_Minh
+      - PORT=3107
+      - JWT_SECRET=${JWT_SECRET:-change-me-in-production}
+      - TZ=${TZ:-Asia/Ho_Chi_Minh}
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:3107/api/auth/status"]
+      interval: 30s
+      timeout: 5s
+      retries: 3

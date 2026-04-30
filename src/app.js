@@ -21,6 +21,8 @@ const growthRoutes = require('./routes/growth');
 const photosRoutes = require('./routes/photos');
 const montessoriRoutes = require('./routes/montessori');
 const statsRoutes = require('./routes/stats');
+const backupRoutes = require('./routes/backup');
+const reportRoutes = require('./routes/report');
 
 const app = express();
 
@@ -52,6 +54,8 @@ app.use('/api/kids/:kidId/growth', growthRoutes);
 app.use('/api/kids/:kidId/photos', photosRoutes);
 app.use('/api/kids/:kidId/montessori', montessoriRoutes);
 app.use('/api/stats', statsRoutes);
+app.use('/api/backup', backupRoutes);
+app.use('/api/kids/:kidId/report', reportRoutes);
 
 // Backward-compatible routes for diary/plans/milestones/growth/photos delete/update
 // These use flat paths like /api/diary/:id

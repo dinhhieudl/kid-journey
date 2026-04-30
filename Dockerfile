@@ -1,16 +1,36 @@
-FROM node:20
+# ---- Build stage ----
+FROM node:20-alpine AS builder
+WORKDIR /app
+COPY package*.json ./
+RUN npm ci --omit=dev && npm cache clean --force
+
+# ---- Production stage ----
+FROM node:20-alpine
+LABEL maintainer="kid-journey"
+
+# Security: run as non-root
+RUN addgroup -S app && adduser -S app -G app
 
 WORKDIR /app
 
+# Copy deps from builder
+COPY --from=builder /app/node_modules ./node_modules
 COPY package*.json ./
 
-RUN npm install
+# Copy source
+COPY src/ ./src/
+COPY montessori.js ./
+COPY data/who-lms-data.json ./data/who-lms-data.json
+COPY public/ ./public/
 
-COPY . .
+# Create data dirs
+RUN mkdir -p data/uploads && chown -R app:app data
 
-# Ensure data directory exists and has proper permissions
-RUN mkdir -p data/uploads && chown -R node:node data
+USER app
 
 EXPOSE 3107
 
-CMD ["node", "server.js"]
+HEALTHCHECK --interval=30s --timeout=5s --retries=3 \
+  CMD wget -q --spider http://localhost:3107/api/auth/status || exit 1
+
+CMD ["node", "src/server.js"]

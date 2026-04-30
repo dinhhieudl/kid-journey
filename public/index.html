@@ -6,6 +6,8 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="theme-color" content="#6c5ce7">
+<link rel="manifest" href="/manifest.json">
+<link rel="apple-touch-icon" href="/icons/icon-192.png">
 <title>🌱 Kid Journey</title>
 <style>
 *{margin:0;padding:0;box-sizing:border-box}
@@ -300,6 +302,13 @@ textarea{resize:vertical;min-height:80px}
   .bottom-nav{padding-bottom:max(8px,env(safe-area-inset-bottom))}
   .topbar{padding-top:max(12px,env(safe-area-inset-top))}
 }
+
+/* Loading spinner overlay */
+.loading-overlay{position:fixed;inset:0;background:rgba(250,248,245,.7);z-index:250;display:none;align-items:center;justify-content:center;backdrop-filter:blur(2px)}
+.loading-overlay.show{display:flex}
+.spinner{width:40px;height:40px;border:3px solid var(--border);border-top-color:var(--primary);border-radius:50%;animation:spin .8s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+.loading-overlay .msg{margin-top:12px;font-size:.85rem;color:var(--text2);font-weight:500}
 </style>
 </head>
 <body>
@@ -321,6 +330,7 @@ textarea{resize:vertical;min-height:80px}
     <a href="#" data-page="montessori"><span class="icon">🧬</span> Montessori</a>
     <a href="#" data-page="photos"><span class="icon">📷</span> Album ảnh</a>
     <a href="#" data-page="profile"><span class="icon">👤</span> Hồ sơ bé</a>
+    <a href="#" data-page="settings"><span class="icon">⚙️</span> Sao lưu & Khôi phục</a>
   </nav>
   <div class="sidebar-footer">Kid Journey v1.0 · Made with ❤️</div>
 </aside>
@@ -345,6 +355,7 @@ textarea{resize:vertical;min-height:80px}
   </div>
 </div>
 
+<div class="loading-overlay" id="loadingOverlay"><div style="text-align:center"><div class="spinner"></div><div class="msg" id="loadingMsg">Đang tải...</div></div></div>
 <div class="toast" id="toast"></div>
 
 <!-- Bottom Nav (mobile) -->
@@ -402,6 +413,22 @@ async function apiUpload(path, formData) {
   if (state.token) headers['Authorization'] = 'Bearer ' + state.token;
   const r = await fetch('/api'+path, { method:'POST', headers, body:formData });
   return r.json();
+}
+
+// Loading spinner
+function showLoading(msg) {
+  document.getElementById('loadingMsg').textContent = msg || 'Đang tải...';
+  document.getElementById('loadingOverlay').classList.add('show');
+}
+function hideLoading() {
+  document.getElementById('loadingOverlay').classList.remove('show');
+}
+
+// Register Service Worker
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('/sw.js').catch(() => {});
+  });
 }
 
 // Toast
@@ -480,14 +507,14 @@ function selectKid(id) {
 function render() {
   const titles = {
     dashboard:'📊 Tổng quan', diary:'📝 Nhật ký', plans:'🎯 Kế hoạch',
-    milestones:'⭐ Cột mốc', growth:'📏 Phát triển', montessori:'🧬 Montessori', photos:'📷 Album ảnh', profile:'👤 Hồ sơ bé'
+    milestones:'⭐ Cột mốc', growth:'📏 Phát triển', montessori:'🧬 Montessori', photos:'📷 Album ảnh', profile:'👤 Hồ sơ bé', settings:'⚙️ Sao lưu & Khôi phục'
   };
   document.getElementById('pageTitle').textContent = titles[state.page] || '';
   document.querySelectorAll('.sidebar nav a').forEach(x => x.classList.toggle('active', x.dataset.page === state.page));
   document.querySelectorAll('.bottom-nav a').forEach(x => x.classList.toggle('active', x.dataset.page === state.page));
   const fn = {
     dashboard:renderDashboard, diary:renderDiary, plans:renderPlans,
-    milestones:renderMilestones, growth:renderGrowth, montessori:renderMontessori, photos:renderPhotos, profile:renderProfile
+    milestones:renderMilestones, growth:renderGrowth, montessori:renderMontessori, photos:renderPhotos, profile:renderProfile, settings:renderSettings
   };
   if (fn[state.page]) fn[state.page]();
 }
@@ -874,7 +901,8 @@ async function renderGrowth() {
   }
 
   c.innerHTML = `
-    <div style="display:flex;justify-content:flex-end;margin-bottom:20px">
+    <div style="display:flex;justify-content:flex-end;gap:8px;margin-bottom:20px">
+      <button class="btn btn-ghost" onclick="openGrowthReport()">📄 Báo cáo PDF</button>
       <button class="btn btn-primary" onclick="showGrowthForm()">📏 Thêm số đo</button>
     </div>
     ${whoSection}
@@ -1833,6 +1861,88 @@ async function renderWeeklyPlan() {
       </div>
     `).join('')}
   `;
+}
+
+// ============ GROWTH REPORT ============
+function openGrowthReport() {
+  if (!state.selectedKid) return;
+  window.open(`/api/kids/${state.selectedKid}/report/growth`, '_blank');
+}
+
+// ============ SETTINGS (Backup & Restore) ============
+function renderSettings() {
+  const c = document.getElementById('content');
+  c.innerHTML = `
+    <div class="grid-2">
+      <div class="card"><div class="card-body" style="text-align:center;padding:32px">
+        <div style="font-size:2.5rem;margin-bottom:12px">📤</div>
+        <h4 style="margin-bottom:8px">Sao lưu dữ liệu</h4>
+        <p style="color:var(--text2);font-size:.85rem;margin-bottom:20px;line-height:1.6">Xuất toàn bộ dữ liệu (bé, nhật ký, kế hoạch, cột mốc, tăng trưởng, Montessori) thành file JSON. Không bao gồm PIN đã mã hóa.</p>
+        <button class="btn btn-primary" onclick="exportBackup()" style="padding:12px 28px">📥 Tải file sao lưu</button>
+      </div></div>
+      <div class="card"><div class="card-body" style="text-align:center;padding:32px">
+        <div style="font-size:2.5rem;margin-bottom:12px">📥</div>
+        <h4 style="margin-bottom:8px">Khôi phục dữ liệu</h4>
+        <p style="color:var(--text2);font-size:.85rem;margin-bottom:20px;line-height:1.6">Nhập file sao lưu JSON để khôi phục dữ liệu. Dữ liệu trùng sẽ được ghi đè.</p>
+        <input type="file" id="import-file" accept=".json" style="display:none" onchange="importBackup(this)">
+        <button class="btn btn-secondary" onclick="document.getElementById('import-file').click()" style="padding:12px 28px">📤 Chọn file khôi phục</button>
+      </div></div>
+    </div>
+
+    <div class="card" style="margin-top:20px"><div class="card-body">
+      <h4 style="margin-bottom:14px">ℹ️ Thông tin ứng dụng</h4>
+      <div class="info-grid">
+        <div class="info-item"><div class="label">Phiên bản</div><div class="value">2.0.0</div></div>
+        <div class="info-item"><div class="label">Cơ sở dữ liệu</div><div class="value">SQLite (WAL)</div></div>
+        <div class="info-item"><div class="label">Dữ liệu WHO</div><div class="value">LMS Reference</div></div>
+        <div class="info-item"><div class="label">PWA</div><div class="value">Service Worker active</div></div>
+      </div>
+    </div></div>
+  `;
+}
+
+async function exportBackup() {
+  showLoading('Đang xuất dữ liệu...');
+  try {
+    const headers = {};
+    if (state.token) headers['Authorization'] = 'Bearer ' + state.token;
+    const r = await fetch('/api/backup/export', { headers });
+    if (!r.ok) throw new Error('Export failed');
+    const blob = await r.blob();
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `kid-journey-backup-${new Date().toISOString().slice(0,10)}.json`;
+    a.click();
+    URL.revokeObjectURL(url);
+    toast('✅ Đã tải file sao lưu!');
+  } catch(e) {
+    toast('❌ Lỗi khi xuất dữ liệu');
+  }
+  hideLoading();
+}
+
+async function importBackup(input) {
+  if (!input.files[0]) return;
+  if (!confirm('Khôi phục dữ liệu? Dữ liệu trùng sẽ được ghi đè.')) { input.value = ''; return; }
+  showLoading('Đang khôi phục dữ liệu...');
+  try {
+    const text = await input.files[0].text();
+    const data = JSON.parse(text);
+    const r = await api('/backup/import', { method:'POST', body:data });
+    if (r && r.ok) {
+      const total = Object.values(r.imported).reduce((a,b) => a+b, 0);
+      toast(`✅ Đã khôi phục ${total} bản ghi!`);
+      await loadKids();
+      render();
+    } else {
+      toast('❌ ' + (r?.error || 'Lỗi khôi phục'));
+    }
+  } catch(e) {
+    toast('❌ File không hợp lệ');
+  }
+  hideLoading();
+  input.value = '';
 }
 
 // Init — check auth first
