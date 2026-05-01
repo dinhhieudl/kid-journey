@@ -226,6 +226,11 @@ function runMigration() {
   `);
   console.log('\n✅ Added indexes to existing tables');
 
+  // ===== Photo Album Enhancement =====
+  // Run photo album migration (pass existing db to avoid double-open)
+  const { runPhotoAlbumMigration } = require('./migrate-photo-album');
+  runPhotoAlbumMigration(db);
+
   console.log('\n🎉 Migration complete!');
   closeDb();
 }

@@ -9,6 +9,7 @@
 <link rel="manifest" href="/manifest.json">
 <link rel="apple-touch-icon" href="/icons/icon-192.png">
 <title>🌱 Kid Journey</title>
+<link rel="stylesheet" href="/css/photo-album.css">
 <style>
 *{margin:0;padding:0;box-sizing:border-box}
 :root{
@@ -136,7 +137,7 @@ textarea{resize:vertical;min-height:80px}
 .chart-label{position:absolute;bottom:0;font-size:.65rem;color:var(--text2);transform:translateX(-50%)}
 .chart-value{position:absolute;font-size:.65rem;color:var(--primary);font-weight:600;transform:translateX(-50%)}
 
-/* Photo grid */
+/* Photo grid — now handled by photo-album.css (masonry layout) */
 .photo-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:12px}
 .photo-card{border-radius:12px;overflow:hidden;box-shadow:var(--shadow);border:1px solid var(--border);cursor:pointer;transition:transform .2s;position:relative}
 .photo-card:hover{transform:scale(1.03)}
@@ -242,7 +243,7 @@ textarea{resize:vertical;min-height:80px}
   /* Timeline */
   .timeline{padding-left:24px}
 
-  /* Photo grid */
+  /* Photo grid — responsive handled by photo-album.css */
   .photo-grid{grid-template-columns:repeat(2,1fr);gap:8px}
   .photo-card img{height:120px}
 
@@ -997,45 +998,947 @@ async function deleteGrowth(id) {
   await api(`/growth/${id}`, {method:'DELETE'}); render();
 }
 
-// ============ PHOTOS ============
+// ============ PHOTOS (Enhanced Album System) ============
+
+// Photo album state
+let photoState = {
+  view: 'timeline',       // 'timeline' | 'albums' | 'tags'
+  selectionMode: false,
+  selectedIds: new Set(),
+  currentLightboxIndex: -1,
+  lightboxPhotos: [],
+  albums: [],
+  tags: [],
+  photos: [],
+  uploadProgress: 0,
+  uploadFiles: [],
+};
+
+// ---- Main Render ----
 async function renderPhotos() {
   if (!state.selectedKid) return renderNoKid();
-  const photos = await api(`/kids/${state.selectedKid}/photos`);
   const c = document.getElementById('content');
+
+  // Show loading
+  c.innerHTML = '<div class="empty"><div class="spinner"></div><p>Đang tải ảnh...</p></div>';
+
+  // Load data in parallel
+  const [photos, stats, albums, tags] = await Promise.all([
+    api(`/kids/${state.selectedKid}/photos`),
+    api(`/kids/${state.selectedKid}/photos/stats`).catch(() => null),
+    api(`/kids/${state.selectedKid}/photos/albums`).catch(() => []),
+    api(`/kids/${state.selectedKid}/photos/tags`).catch(() => []),
+  ]);
+
+  photoState.photos = photos || [];
+  photoState.albums = albums || [];
+  photoState.tags = tags || [];
+  photoState.selectionMode = false;
+  photoState.selectedIds.clear();
+
   c.innerHTML = `
-    <div style="display:flex;justify-content:flex-end;margin-bottom:20px">
-      <button class="btn btn-primary" onclick="showPhotoUpload()">📷 Tải ảnh lên</button>
-    </div>
-    ${photos.length ? `<div class="photo-grid">${photos.map(p=>`
-      <div class="photo-card" onclick="window.open('/uploads/${p.filename}','_blank')">
-        <img src="/uploads/${p.filename}" alt="${esc(p.caption||'')}" loading="lazy">
-        <div class="caption">${esc(p.caption||p.date)}</div>
+    <!-- Stats Bar -->
+    ${stats ? `<div class="photo-stats-bar">
+      <div class="stat-item">📷 <strong>${stats.images || 0}</strong> ảnh</div>
+      <div class="stat-item">🎬 <strong>${stats.videos || 0}</strong> video</div>
+      <div class="stat-item">📁 <strong>${stats.albumCount || 0}</strong> album</div>
+      <div class="stat-item">🏷️ <strong>${stats.tagCount || 0}</strong> thẻ</div>
+      <div class="stat-item">💾 <strong>${formatFileSize(stats.totalSize || 0)}</strong></div>
+    </div>` : ''}
+
+    <!-- Header -->
+    <div class="photo-header">
+      <div class="photo-header-left">
+        <div class="photo-tabs">
+          <button class="photo-tab ${photoState.view==='timeline'?'active':''}" onclick="switchPhotoView('timeline')">📅 Thời gian</button>
+          <button class="photo-tab ${photoState.view==='albums'?'active':''}" onclick="switchPhotoView('albums')">📁 Album</button>
+          <button class="photo-tab ${photoState.view==='tags'?'active':''}" onclick="switchPhotoView('tags')">🏷️ Thẻ</button>
+        </div>
       </div>
-    `).join('')}</div>` : '<div class="empty"><div class="icon">📷</div><p>Chưa có ảnh nào</p><button class="btn btn-primary" onclick="showPhotoUpload()">📷 Tải ảnh đầu tiên</button></div>'}
+      <div class="photo-header-right">
+        <button class="btn btn-ghost btn-sm" onclick="toggleSelectionMode()">☑️ Chọn</button>
+        <button class="btn btn-primary" onclick="showEnhancedUpload()">📷 Tải ảnh lên</button>
+      </div>
+    </div>
+
+    <!-- Content -->
+    <div id="photoViewContent"></div>
+  `;
+
+  renderPhotoViewContent();
+}
+
+function renderPhotoViewContent() {
+  const container = document.getElementById('photoViewContent');
+  if (!container) return;
+
+  if (photoState.view === 'timeline') {
+    renderPhotoTimeline(container);
+  } else if (photoState.view === 'albums') {
+    renderPhotoAlbums(container);
+  } else if (photoState.view === 'tags') {
+    renderPhotoTags(container);
+  }
+}
+
+function switchPhotoView(view) {
+  photoState.view = view;
+  document.querySelectorAll('.photo-tab').forEach(t => t.classList.remove('active'));
+  document.querySelector(`.photo-tab[onclick="switchPhotoView('${view}')"]`)?.classList.add('active');
+  renderPhotoViewContent();
+}
+
+// ---- Timeline View (Masonry + Date Groups) ----
+function renderPhotoTimeline(container) {
+  const photos = photoState.photos;
+  if (!photos.length) {
+    container.innerHTML = '<div class="empty"><div class="icon">📷</div><p>Chưa có ảnh nào</p><button class="btn btn-primary" onclick="showEnhancedUpload()">📷 Tải ảnh đầu tiên</button></div>';
+    return;
+  }
+
+  // Group by date
+  const groups = {};
+  photos.forEach(p => {
+    const d = p.date || 'unknown';
+    if (!groups[d]) groups[d] = [];
+    groups[d].push(p);
+  });
+
+  const sortedDates = Object.keys(groups).sort((a, b) => b.localeCompare(a));
+
+  container.innerHTML = sortedDates.map(date => {
+    const datePhotos = groups[date];
+    const dateLabel = formatDateLabel(date);
+    return `
+      <div class="photo-date-group">
+        <div class="photo-date-header">
+          <span class="date-text">📅 ${dateLabel}</span>
+          <span class="date-count">${datePhotos.length} ảnh</span>
+          <span class="date-relative">${relativeDate(date)}</span>
+        </div>
+        <div class="masonry-grid">
+          ${datePhotos.map((p, i) => renderMasonryItem(p, i)).join('')}
+        </div>
+      </div>
+    `;
+  }).join('');
+
+  // Build flat list for lightbox
+  photoState.lightboxPhotos = photos;
+}
+
+function renderMasonryItem(photo, index) {
+  const isVideo = photo.file_type === 'video';
+  const thumbSrc = photo.thumbnail_path ? `/uploads/${photo.thumbnail_path}` : `/uploads/${photo.filename}`;
+  const tags = photo.tags || [];
+  const isSelected = photoState.selectedIds.has(photo.id);
+
+  return `
+    <div class="masonry-item ${isSelected ? 'selected' : ''}" data-id="${photo.id}" data-index="${index}"
+         onclick="onPhotoClick(event, ${photo.id})" ondblclick="openLightbox(${photo.id})">
+      <div class="select-check ${isSelected ? 'checked' : ''}" onclick="event.stopPropagation(); togglePhotoSelect(${photo.id})">
+        ${isSelected ? '✓' : ''}
+      </div>
+      ${tags.length ? `<div class="photo-tags">${tags.map(t =>
+        `<span class="photo-tag-chip" style="background:${t.color}">${t.name}</span>`
+      ).join('')}</div>` : ''}
+      ${isVideo ? `
+        <div class="video-badge">🎬 ${formatDuration(photo.duration)}</div>
+        <video src="/uploads/${photo.filename}" muted preload="metadata" style="aspect-ratio:${photo.width && photo.height ? photo.width+'/'+photo.height : '4/3'}"></video>
+      ` : `
+        <img src="${thumbSrc}" alt="${esc(photo.caption||'')}" loading="lazy"
+             style="aspect-ratio:${photo.width && photo.height ? photo.width+'/'+photo.height : 'auto'}"
+             onerror="this.src='/uploads/${photo.filename}'">
+      `}
+      <div class="item-overlay">
+        ${photo.caption ? `<div class="caption">${esc(photo.caption)}</div>` : ''}
+        <div class="meta">${photo.original_name || ''} ${photo.file_size ? '· '+formatFileSize(photo.file_size) : ''}</div>
+      </div>
+    </div>
   `;
 }
 
-function showPhotoUpload() {
-  openModal('Tải ảnh lên', `
-    <div class="form-group"><label>Chọn ảnh</label><input type="file" id="f-file" accept="image/*,video/*" multiple></div>
-    <div class="form-group"><label>Chú thích</label><input id="f-caption" placeholder="Kỷ niệm đáng nhớ..."></div>
-    <div class="form-group"><label>Ngày</label><input type="date" id="f-date" value="${new Date().toISOString().slice(0,10)}"></div>
-  `, `<button class="btn btn-ghost" onclick="closeModal()">Hủy</button><button class="btn btn-primary" onclick="uploadPhotos()">📤 Tải lên</button>`);
+// ---- Albums View ----
+function renderPhotoAlbums(container) {
+  const albums = photoState.albums;
+  container.innerHTML = `
+    <div class="album-grid">
+      <div class="album-card add-album" onclick="showCreateAlbum()">
+        <div class="album-cover">➕</div>
+        <div class="album-info"><h4>Tạo album mới</h4><p>Nhóm ảnh theo chủ đề</p></div>
+      </div>
+      ${albums.map(a => `
+        <div class="album-card" onclick="openAlbum(${a.id})">
+          <div class="album-cover" style="${a.cover_thumbnail || a.cover_filename ? '' : `background:${a.color || '#6366f1'}`}">
+            ${a.cover_thumbnail || a.cover_filename
+              ? `<img src="/uploads/${a.cover_thumbnail || a.cover_filename}" alt="${esc(a.name)}">`
+              : a.icon || '📁'}
+            <span class="album-count">${a.photo_count || 0} ảnh</span>
+          </div>
+          <div class="album-info">
+            <h4>${esc(a.name)}</h4>
+            ${a.description ? `<p>${esc(a.description)}</p>` : ''}
+          </div>
+        </div>
+      `).join('')}
+    </div>
+  `;
 }
 
-async function uploadPhotos() {
-  const files = document.getElementById('f-file').files;
-  if (!files.length) return toast('⚠️ Chọn ảnh nhé!');
-  const caption = document.getElementById('f-caption').value.trim();
-  const date = document.getElementById('f-date').value;
-  for (const file of files) {
-    const fd = new FormData();
-    fd.append('photo', file);
-    fd.append('caption', caption);
-    fd.append('date', date);
-    await fetch(`/api/kids/${state.selectedKid}/photos`, {method:'POST', body:fd});
+async function openAlbum(albumId) {
+  const data = await api(`/kids/${state.selectedKid}/photos/albums/${albumId}`);
+  if (!data) return;
+  photoState.lightboxPhotos = data.photos || [];
+
+  const c = document.getElementById('photoViewContent');
+  c.innerHTML = `
+    <div style="display:flex;align-items:center;gap:12px;margin-bottom:20px">
+      <button class="btn btn-ghost btn-sm" onclick="renderPhotoViewContent()">← Quay lại</button>
+      <h3 style="flex:1">${data.icon || '📁'} ${esc(data.name)}</h3>
+      <button class="btn btn-ghost btn-sm" onclick="showEditAlbum(${albumId})">✏️ Sửa</button>
+      <button class="btn btn-danger btn-sm" onclick="deleteAlbumConfirm(${albumId})">🗑️ Xóa</button>
+      <button class="btn btn-ghost btn-sm" onclick="shareAlbum(${albumId})">🔗 Chia sẻ</button>
+    </div>
+    ${data.description ? `<p style="color:var(--text2);margin-bottom:16px">${esc(data.description)}</p>` : ''}
+    ${data.photos.length ? `
+      <div class="masonry-grid">${data.photos.map((p, i) => renderMasonryItem(p, i)).join('')}</div>
+    ` : '<div class="empty"><div class="icon">📁</div><p>Album trống — hãy thêm ảnh vào!</p></div>'}
+  `;
+}
+
+function showCreateAlbum() {
+  openModal('Tạo album mới', `
+    <div class="form-group"><label>Tên album</label><input id="f-album-name" placeholder="Sinh nhật, Du lịch..."></div>
+    <div class="form-group"><label>Mô tả</label><textarea id="f-album-desc" rows="2" placeholder="Khoảnh khắc đáng nhớ..."></textarea></div>
+    <div class="form-group"><label>Màu sắc</label>
+      <div style="display:flex;gap:8px;flex-wrap:wrap">
+        ${['#6366f1','#ec4899','#f59e0b','#10b981','#3b82f6','#8b5cf6','#ef4444','#06b6d4'].map(c =>
+          `<div onclick="document.getElementById('f-album-color').value='${c}';this.parentElement.querySelectorAll('div').forEach(d=>d.style.outline='none');this.style.outline='3px solid ${c}'" style="width:32px;height:32px;border-radius:8px;background:${c};cursor:pointer"></div>`
+        ).join('')}
+        <input type="hidden" id="f-album-color" value="#6366f1">
+      </div>
+    </div>
+  `, `<button class="btn btn-ghost" onclick="closeModal()">Hủy</button><button class="btn btn-primary" onclick="createAlbum()">📁 Tạo</button>`);
+}
+
+async function createAlbum() {
+  const name = document.getElementById('f-album-name').value.trim();
+  if (!name) return toast('⚠️ Nhập tên album nhé!');
+  const desc = document.getElementById('f-album-desc').value.trim();
+  const color = document.getElementById('f-album-color').value;
+  await api(`/kids/${state.selectedKid}/photos/albums`, {
+    method: 'POST',
+    body: { name, description: desc, color },
+  });
+  toast('📁 Đã tạo album!'); closeModal(); renderPhotos();
+}
+
+async function deleteAlbumConfirm(albumId) {
+  if (!confirm('Xóa album này? (Ảnh sẽ không bị xóa)')) return;
+  await api(`/kids/${state.selectedKid}/photos/albums/${albumId}`, { method: 'DELETE' });
+  toast('🗑️ Đã xóa album'); renderPhotos();
+}
+
+function showEditAlbum(albumId) {
+  const album = photoState.albums.find(a => a.id === albumId);
+  if (!album) return;
+  openModal('Sửa album', `
+    <div class="form-group"><label>Tên album</label><input id="f-album-name" value="${esc(album.name)}"></div>
+    <div class="form-group"><label>Mô tả</label><textarea id="f-album-desc" rows="2">${esc(album.description||'')}</textarea></div>
+  `, `<button class="btn btn-ghost" onclick="closeModal()">Hủy</button><button class="btn btn-primary" onclick="updateAlbum(${albumId})">💾 Lưu</button>`);
+}
+
+async function updateAlbum(albumId) {
+  const name = document.getElementById('f-album-name').value.trim();
+  const desc = document.getElementById('f-album-desc').value.trim();
+  await api(`/kids/${state.selectedKid}/photos/albums/${albumId}`, {
+    method: 'PUT',
+    body: { name, description: desc },
+  });
+  toast('💾 Đã lưu!'); closeModal(); renderPhotos();
+}
+
+// ---- Tags View ----
+function renderPhotoTags(container) {
+  const tags = photoState.tags;
+  const photos = photoState.photos;
+
+  container.innerHTML = `
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
+      <div class="tag-manager">
+        <div class="tag-chip" onclick="filterByTag(null)" id="tag-all">
+          <span class="tag-icon">📷</span> Tất cả <span class="tag-count">${photos.length}</span>
+        </div>
+        ${tags.map(t => `
+          <div class="tag-chip" onclick="filterByTag(${t.id})" data-tag-id="${t.id}" style="border-color:${t.color}">
+            <span class="tag-icon">${t.icon||'🏷️'}</span> ${esc(t.name)}
+            <span class="tag-count">${t.usage_count||0}</span>
+            <span class="tag-remove" onclick="event.stopPropagation(); deleteTagConfirm(${t.id})">✕</span>
+          </div>
+        `).join('')}
+      </div>
+      <button class="btn btn-ghost btn-sm" onclick="showCreateTag()">+ Thêm thẻ</button>
+    </div>
+    <div id="tagFilteredPhotos"></div>
+  `;
+
+  filterByTag(null);
+}
+
+async function filterByTag(tagId) {
+  document.querySelectorAll('.tag-chip').forEach(c => c.classList.remove('active'));
+  if (tagId) {
+    document.querySelector(`.tag-chip[data-tag-id="${tagId}"]`)?.classList.add('active');
+  } else {
+    document.getElementById('tag-all')?.classList.add('active');
   }
-  toast('📷 Đã tải lên!'); closeModal(); render();
+
+  let filtered = photoState.photos;
+  if (tagId) {
+    const tag = photoState.tags.find(t => t.id === tagId);
+    if (tag) {
+      filtered = photoState.photos.filter(p => p.tags?.some(t => t.name === tag.name));
+    }
+  }
+
+  const container = document.getElementById('tagFilteredPhotos');
+  if (!filtered.length) {
+    container.innerHTML = '<div class="empty"><p>Không có ảnh nào với thẻ này</p></div>';
+    return;
+  }
+
+  // Build lightbox list for filtered
+  photoState.lightboxPhotos = filtered;
+
+  container.innerHTML = `
+    <div class="masonry-grid">${filtered.map((p, i) => renderMasonryItem(p, i)).join('')}</div>
+  `;
+}
+
+function showCreateTag() {
+  const eventColors = { 'Sinh nhật': '#ec4899', 'Du lịch': '#3b82f6', 'Dã ngoại': '#10b981', 'Tết': '#f59e0b', 'Giáng sinh': '#ef4444' };
+  openModal('Tạo thẻ mới', `
+    <div class="form-group"><label>Tên thẻ</label><input id="f-tag-name" placeholder="Sinh nhật, Du lịch..."></div>
+    <div class="form-group"><label>Loại</label>
+      <select id="f-tag-type">
+        <option value="event">🎉 Sự kiện</option>
+        <option value="milestone">⭐ Cột mốc</option>
+        <option value="location">📍 Địa điểm</option>
+        <option value="person">👤 Người</option>
+        <option value="other">🏷️ Khác</option>
+      </select>
+    </div>
+    <div class="form-group"><label>Màu sắc</label>
+      <div style="display:flex;gap:8px;flex-wrap:wrap">
+        ${['#ec4899','#f59e0b','#10b981','#3b82f6','#8b5cf6','#ef4444','#06b6d4','#6366f1'].map(c =>
+          `<div onclick="document.getElementById('f-tag-color').value='${c}';this.parentElement.querySelectorAll('div').forEach(d=>d.style.outline='none');this.style.outline='3px solid ${c}'" style="width:32px;height:32px;border-radius:8px;background:${c};cursor:pointer"></div>`
+        ).join('')}
+        <input type="hidden" id="f-tag-color" value="#8b5cf6">
+      </div>
+    </div>
+  `, `<button class="btn btn-ghost" onclick="closeModal()">Hủy</button><button class="btn btn-primary" onclick="createTag()">🏷️ Tạo</button>`);
+}
+
+async function createTag() {
+  const name = document.getElementById('f-tag-name').value.trim();
+  if (!name) return toast('⚠️ Nhập tên thẻ nhé!');
+  const type = document.getElementById('f-tag-type').value;
+  const color = document.getElementById('f-tag-color').value;
+  await api(`/kids/${state.selectedKid}/photos/tags`, {
+    method: 'POST',
+    body: { name, type, color },
+  });
+  toast('🏷️ Đã tạo thẻ!'); closeModal(); renderPhotos();
+}
+
+async function deleteTagConfirm(tagId) {
+  if (!confirm('Xóa thẻ này?')) return;
+  await api(`/kids/${state.selectedKid}/photos/tags/${tagId}`, { method: 'DELETE' });
+  toast('🗑️ Đã xóa thẻ'); renderPhotos();
+}
+
+// ---- Selection Mode ----
+function toggleSelectionMode() {
+  photoState.selectionMode = !photoState.selectionMode;
+  photoState.selectedIds.clear();
+
+  const content = document.getElementById('content');
+  if (photoState.selectionMode) {
+    content.classList.add('selection-mode');
+    document.querySelector('.bulk-toolbar')?.classList.add('show');
+    createBulkToolbar();
+  } else {
+    content.classList.remove('selection-mode');
+    document.querySelector('.bulk-toolbar')?.classList.remove('show');
+  }
+
+  // Update checkboxes
+  document.querySelectorAll('.masonry-item').forEach(item => {
+    const id = Number(item.dataset.id);
+    const check = item.querySelector('.select-check');
+    if (check) {
+      check.classList.remove('checked');
+      check.textContent = '';
+    }
+    item.classList.remove('selected');
+  });
+}
+
+function createBulkToolbar() {
+  let toolbar = document.querySelector('.bulk-toolbar');
+  if (!toolbar) {
+    toolbar = document.createElement('div');
+    toolbar.className = 'bulk-toolbar';
+    document.body.appendChild(toolbar);
+  }
+  toolbar.innerHTML = `
+    <div class="bulk-info"><span id="bulkCount">0</span> ảnh đã chọn</div>
+    <div class="bulk-actions">
+      <button class="btn btn-ghost btn-sm" onclick="bulkAddToAlbum()">📁 Thêm vào album</button>
+      <button class="btn btn-ghost btn-sm" onclick="bulkAddTag()">🏷️ Gắn thẻ</button>
+      <button class="btn btn-danger btn-sm" onclick="bulkDelete()">🗑️ Xóa</button>
+      <button class="btn btn-ghost btn-sm" onclick="toggleSelectionMode()">✕ Hủy</button>
+    </div>
+  `;
+  toolbar.classList.add('show');
+}
+
+function togglePhotoSelect(photoId) {
+  if (photoState.selectedIds.has(photoId)) {
+    photoState.selectedIds.delete(photoId);
+  } else {
+    photoState.selectedIds.add(photoId);
+  }
+
+  // Update UI
+  const item = document.querySelector(`.masonry-item[data-id="${photoId}"]`);
+  if (item) {
+    const check = item.querySelector('.select-check');
+    const isSelected = photoState.selectedIds.has(photoId);
+    item.classList.toggle('selected', isSelected);
+    if (check) {
+      check.classList.toggle('checked', isSelected);
+      check.textContent = isSelected ? '✓' : '';
+    }
+  }
+
+  const countEl = document.getElementById('bulkCount');
+  if (countEl) countEl.textContent = photoState.selectedIds.size;
+}
+
+function onPhotoClick(event, photoId) {
+  if (photoState.selectionMode) {
+    event.preventDefault();
+    event.stopPropagation();
+    togglePhotoSelect(photoId);
+  } else {
+    openLightbox(photoId);
+  }
+}
+
+async function bulkDelete() {
+  const ids = [...photoState.selectedIds];
+  if (!ids.length) return toast('⚠️ Chọn ảnh cần xóa!');
+  if (!confirm(`Xóa ${ids.length} ảnh? Không thể hoàn tác!`)) return;
+
+  await api(`/kids/${state.selectedKid}/photos/bulk/delete`, {
+    method: 'POST',
+    body: { ids },
+  });
+  toast(`🗑️ Đã xóa ${ids.length} ảnh`);
+  toggleSelectionMode();
+  renderPhotos();
+}
+
+async function bulkAddToAlbum() {
+  const ids = [...photoState.selectedIds];
+  if (!ids.length) return toast('⚠️ Chọn ảnh trước!');
+
+  const albums = photoState.albums;
+  if (!albums.length) return toast('⚠️ Tạo album trước nhé!');
+
+  openModal('Thêm vào album', `
+    <div class="form-group"><label>Chọn album</label>
+      <select id="f-bulk-album">
+        ${albums.map(a => `<option value="${a.id}">${a.icon||'📁'} ${esc(a.name)} (${a.photo_count||0} ảnh)</option>`).join('')}
+      </select>
+    </div>
+    <p style="font-size:.82rem;color:var(--text2)">Sẽ thêm ${ids.length} ảnh vào album đã chọn</p>
+  `, `<button class="btn btn-ghost" onclick="closeModal()">Hủy</button><button class="btn btn-primary" onclick="bulkAddToAlbumConfirm()">📁 Thêm</button>`);
+}
+
+async function bulkAddToAlbumConfirm() {
+  const albumId = Number(document.getElementById('f-bulk-album').value);
+  const ids = [...photoState.selectedIds];
+  await api(`/kids/${state.selectedKid}/photos/bulk/album`, {
+    method: 'POST',
+    body: { photo_ids: ids, album_id: albumId, action: 'add' },
+  });
+  toast(`📁 Đã thêm ${ids.length} ảnh vào album!`);
+  closeModal(); toggleSelectionMode(); renderPhotos();
+}
+
+async function bulkAddTag() {
+  const ids = [...photoState.selectedIds];
+  if (!ids.length) return toast('⚠️ Chọn ảnh trước!');
+
+  const tags = photoState.tags;
+  if (!tags.length) return toast('⚠️ Tạo thẻ trước nhé!');
+
+  openModal('Gắn thẻ', `
+    <div class="form-group"><label>Chọn thẻ</label>
+      <div style="display:flex;gap:6px;flex-wrap:wrap">
+        ${tags.map(t => `
+          <label class="tag-chip" style="border-color:${t.color};cursor:pointer">
+            <input type="checkbox" value="${t.id}" style="display:none" class="bulk-tag-cb">
+            <span class="tag-icon">${t.icon||'🏷️'}</span> ${esc(t.name)}
+          </label>
+        `).join('')}
+      </div>
+    </div>
+    <p style="font-size:.82rem;color:var(--text2)">Sẽ gắn thẻ cho ${ids.length} ảnh</p>
+  `, `<button class="btn btn-ghost" onclick="closeModal()">Hủy</button><button class="btn btn-primary" onclick="bulkAddTagConfirm()">🏷️ Gắn thẻ</button>`);
+}
+
+async function bulkAddTagConfirm() {
+  const tagIds = [...document.querySelectorAll('.bulk-tag-cb:checked')].map(cb => Number(cb.value));
+  if (!tagIds.length) return toast('⚠️ Chọn thẻ nhé!');
+  const ids = [...photoState.selectedIds];
+  await api(`/kids/${state.selectedKid}/photos/bulk/tag`, {
+    method: 'POST',
+    body: { photo_ids: ids, tag_ids: tagIds, action: 'add' },
+  });
+  toast(`🏷️ Đã gắn thẻ ${ids.length} ảnh!`);
+  closeModal(); toggleSelectionMode(); renderPhotos();
+}
+
+// ---- Enhanced Upload with Drag & Drop + Progress ----
+function showEnhancedUpload() {
+  openModal('Tải ảnh/video lên', `
+    <div class="upload-dropzone" id="uploadDropzone"
+         ondragover="event.preventDefault(); this.classList.add('dragover')"
+         ondragleave="this.classList.remove('dragover')"
+         ondrop="handleDrop(event)"
+         onclick="document.getElementById('uploadFileInput').click()">
+      <div class="drop-icon">📤</div>
+      <div class="drop-text">Kéo thả ảnh/video vào đây</div>
+      <div class="drop-hint">hoặc click để chọn · JPG, PNG, GIF, WebP, MP4, MOV · Tối đa 50MB</div>
+      <input type="file" id="uploadFileInput" accept="image/*,video/*" multiple style="display:none" onchange="onFilesSelected(this.files)">
+    </div>
+    <div id="uploadPreviewArea"></div>
+    <div class="form-group"><label>Chú thích</label><input id="f-upload-caption" placeholder="Kỷ niệm đáng nhớ..."></div>
+    <div class="form-row">
+      <div class="form-group"><label>Ngày</label><input type="date" id="f-upload-date" value="${new Date().toISOString().slice(0,10)}"></div>
+      <div class="form-group"><label>Album (tùy chọn)</label>
+        <select id="f-upload-album">
+          <option value="">-- Không --</option>
+          ${photoState.albums.map(a => `<option value="${a.id}">${a.icon||'📁'} ${esc(a.name)}</option>`).join('')}
+        </select>
+      </div>
+    </div>
+    <div class="upload-progress" id="uploadProgressArea" style="display:none">
+      <div class="progress-bar-bg"><div class="progress-bar-fill" id="uploadProgressBar"></div></div>
+      <div class="progress-text" id="uploadProgressText">0%</div>
+      <div class="upload-file-list" id="uploadFileList"></div>
+    </div>
+  `, `<button class="btn btn-ghost" onclick="closeModal()">Đóng</button><button class="btn btn-primary" id="uploadSubmitBtn" onclick="startUpload()">📤 Tải lên</button>`);
+}
+
+function handleDrop(event) {
+  event.preventDefault();
+  event.target.closest('.upload-dropzone')?.classList.remove('dragover');
+  const files = event.dataTransfer.files;
+  if (files.length) onFilesSelected(files);
+}
+
+function onFilesSelected(files) {
+  if (!files.length) return;
+  photoState.uploadFiles = [...files];
+
+  const preview = document.getElementById('uploadPreviewArea');
+  if (!preview) return;
+
+  preview.innerHTML = `
+    <div class="upload-file-list">
+      ${[...files].map((f, i) => `
+        <div class="upload-file-item" id="upload-file-${i}">
+          <span class="file-name">${esc(f.name)}</span>
+          <span style="font-size:.72rem;color:var(--text2)">${formatFileSize(f.size)}</span>
+          <span class="file-status" id="upload-status-${i}">⏳</span>
+        </div>
+      `).join('')}
+    </div>
+  `;
+}
+
+async function startUpload() {
+  const files = photoState.uploadFiles;
+  if (!files || !files.length) {
+    // Try to get from input
+    const input = document.getElementById('uploadFileInput');
+    if (input?.files?.length) {
+      photoState.uploadFiles = [...input.files];
+    } else {
+      return toast('⚠️ Chọn ảnh/video nhé!');
+    }
+  }
+
+  const caption = document.getElementById('f-upload-caption')?.value?.trim() || '';
+  const date = document.getElementById('f-upload-date')?.value || new Date().toISOString().slice(0, 10);
+  const albumId = document.getElementById('f-upload-album')?.value || '';
+
+  const progressArea = document.getElementById('uploadProgressArea');
+  const progressBar = document.getElementById('uploadProgressBar');
+  const progressText = document.getElementById('uploadProgressText');
+  const submitBtn = document.getElementById('uploadSubmitBtn');
+
+  if (progressArea) progressArea.style.display = 'block';
+  if (submitBtn) submitBtn.disabled = true;
+
+  const totalFiles = photoState.uploadFiles.length;
+  let completed = 0;
+
+  for (let i = 0; i < totalFiles; i++) {
+    const file = photoState.uploadFiles[i];
+    const statusEl = document.getElementById(`upload-status-${i}`);
+
+    if (statusEl) { statusEl.textContent = '⬆️'; statusEl.className = 'file-status uploading'; }
+
+    try {
+      const fd = new FormData();
+      fd.append('photo', file);
+      fd.append('caption', caption);
+      fd.append('date', date);
+      if (albumId) fd.append('album_id', albumId);
+
+      const result = await apiUpload(`/kids/${state.selectedKid}/photos`, fd);
+
+      if (result?.ok) {
+        if (statusEl) { statusEl.textContent = '✅'; statusEl.className = 'file-status done'; }
+      } else {
+        if (statusEl) { statusEl.textContent = '❌'; statusEl.className = 'file-status error'; }
+      }
+    } catch (e) {
+      if (statusEl) { statusEl.textContent = '❌'; statusEl.className = 'file-status error'; }
+    }
+
+    completed++;
+    const pct = Math.round((completed / totalFiles) * 100);
+    if (progressBar) progressBar.style.width = pct + '%';
+    if (progressText) progressText.textContent = `${completed}/${totalFiles} · ${pct}%`;
+  }
+
+  toast(`📷 Đã tải lên ${completed} file!`);
+  if (submitBtn) submitBtn.disabled = false;
+
+  // Auto close after 1s
+  setTimeout(() => { closeModal(); renderPhotos(); }, 1000);
+}
+
+// ---- Lightbox ----
+function openLightbox(photoId) {
+  const photos = photoState.lightboxPhotos;
+  const index = photos.findIndex(p => p.id === photoId);
+  if (index === -1) return;
+
+  photoState.currentLightboxIndex = index;
+
+  // Create lightbox if not exists
+  let lb = document.getElementById('lightbox');
+  if (!lb) {
+    lb = document.createElement('div');
+    lb.id = 'lightbox';
+    lb.className = 'lightbox';
+    document.body.appendChild(lb);
+  }
+
+  renderLightbox();
+  lb.classList.add('show');
+  document.body.style.overflow = 'hidden';
+}
+
+function closeLightbox() {
+  const lb = document.getElementById('lightbox');
+  if (lb) lb.classList.remove('show');
+  document.body.style.overflow = '';
+  photoState.currentLightboxIndex = -1;
+}
+
+function renderLightbox() {
+  const lb = document.getElementById('lightbox');
+  const photos = photoState.lightboxPhotos;
+  const index = photoState.currentLightboxIndex;
+  const photo = photos[index];
+  if (!photo || !lb) return;
+
+  const isVideo = photo.file_type === 'video';
+  const src = `/uploads/${photo.filename}`;
+
+  lb.innerHTML = `
+    <div class="lightbox-header">
+      <div class="lb-info">
+        <span class="lightbox-counter">${index + 1} / ${photos.length}</span>
+      </div>
+      <div class="lb-actions">
+        <button class="lb-btn" onclick="sharePhoto(${photo.id})" title="Chia sẻ">🔗</button>
+        <button class="lb-btn" onclick="showPhotoInfo(${photo.id})" title="Thông tin">ℹ️</button>
+        <button class="lb-btn" onclick="deletePhotoFromLightbox(${photo.id})" title="Xóa">🗑️</button>
+        <button class="lb-btn" onclick="closeLightbox()" title="Đóng">✕</button>
+      </div>
+    </div>
+    <div class="lightbox-body" id="lightboxBody">
+      ${isVideo ? `
+        <video class="lb-video" src="${src}" controls autoplay playsinline></video>
+      ` : `
+        <img class="lb-media" src="${src}" alt="${esc(photo.caption||'')}" id="lightboxImg"
+             draggable="false">
+      `}
+      <button class="lightbox-nav prev" onclick="lightboxNav(-1)">‹</button>
+      <button class="lightbox-nav next" onclick="lightboxNav(1)">›</button>
+    </div>
+    <div class="lightbox-footer">
+      ${photo.caption ? `<div class="lb-caption">${esc(photo.caption)}</div>` : ''}
+      <div class="lb-date">${photo.date || ''} · ${photo.original_name || ''} ${photo.file_size ? '· '+formatFileSize(photo.file_size) : ''}</div>
+    </div>
+    <div class="lightbox-thumbs">
+      ${photos.slice(Math.max(0, index - 10), Math.min(photos.length, index + 11)).map((p, i) => {
+        const realIndex = Math.max(0, index - 10) + i;
+        const thumbSrc = p.thumbnail_path ? `/uploads/${p.thumbnail_path}` : `/uploads/${p.filename}`;
+        return `<div class="thumb-item ${realIndex === index ? 'active' : ''}" onclick="goToLightboxIndex(${realIndex})">
+          <img src="${thumbSrc}" alt="">
+        </div>`;
+      }).join('')}
+    </div>
+  `;
+
+  // Add touch/swipe support
+  setupLightboxGestures();
+}
+
+function lightboxNav(dir) {
+  const photos = photoState.lightboxPhotos;
+  let newIndex = photoState.currentLightboxIndex + dir;
+  if (newIndex < 0) newIndex = photos.length - 1;
+  if (newIndex >= photos.length) newIndex = 0;
+  photoState.currentLightboxIndex = newIndex;
+  renderLightbox();
+}
+
+function goToLightboxIndex(index) {
+  photoState.currentLightboxIndex = index;
+  renderLightbox();
+}
+
+function setupLightboxGestures() {
+  const body = document.getElementById('lightboxBody');
+  if (!body) return;
+
+  let startX = 0, startY = 0, isDragging = false;
+  let pinchStartDist = 0, currentScale = 1;
+  const img = document.getElementById('lightboxImg');
+
+  // Touch swipe
+  body.addEventListener('touchstart', (e) => {
+    if (e.touches.length === 2 && img) {
+      // Pinch start
+      pinchStartDist = Math.hypot(
+        e.touches[0].clientX - e.touches[1].clientX,
+        e.touches[0].clientY - e.touches[1].clientY
+      );
+    } else if (e.touches.length === 1) {
+      startX = e.touches[0].clientX;
+      startY = e.touches[0].clientY;
+      isDragging = true;
+    }
+  }, { passive: true });
+
+  body.addEventListener('touchmove', (e) => {
+    if (e.touches.length === 2 && img && pinchStartDist) {
+      // Pinch zoom
+      const dist = Math.hypot(
+        e.touches[0].clientX - e.touches[1].clientX,
+        e.touches[0].clientY - e.touches[1].clientY
+      );
+      currentScale = Math.max(0.5, Math.min(5, dist / pinchStartDist));
+      img.style.transform = `scale(${currentScale})`;
+    }
+  }, { passive: true });
+
+  body.addEventListener('touchend', (e) => {
+    if (pinchStartDist && currentScale !== 1) {
+      // Reset pinch
+      if (currentScale < 1.1 && currentScale > 0.9) {
+        img.style.transform = 'scale(1)';
+        currentScale = 1;
+      }
+      pinchStartDist = 0;
+      return;
+    }
+
+    if (!isDragging) return;
+    isDragging = false;
+
+    const dx = (e.changedTouches[0]?.clientX || 0) - startX;
+    const dy = (e.changedTouches[0]?.clientY || 0) - startY;
+
+    if (Math.abs(dx) > 50 && Math.abs(dx) > Math.abs(dy)) {
+      if (dx > 0) lightboxNav(-1);
+      else lightboxNav(1);
+    }
+  }, { passive: true });
+
+  // Keyboard nav
+  document.addEventListener('keydown', lightboxKeyHandler);
+}
+
+function lightboxKeyHandler(e) {
+  const lb = document.getElementById('lightbox');
+  if (!lb || !lb.classList.contains('show')) {
+    document.removeEventListener('keydown', lightboxKeyHandler);
+    return;
+  }
+  if (e.key === 'ArrowLeft') lightboxNav(-1);
+  else if (e.key === 'ArrowRight') lightboxNav(1);
+  else if (e.key === 'Escape') closeLightbox();
+}
+
+async function deletePhotoFromLightbox(photoId) {
+  if (!confirm('Xóa ảnh này?')) return;
+  await api(`/kids/${state.selectedKid}/photos/${photoId}`, { method: 'DELETE' });
+  toast('🗑️ Đã xóa');
+
+  // Remove from list and update
+  photoState.lightboxPhotos = photoState.lightboxPhotos.filter(p => p.id !== photoId);
+  if (photoState.lightboxPhotos.length === 0) {
+    closeLightbox();
+    renderPhotos();
+    return;
+  }
+  if (photoState.currentLightboxIndex >= photoState.lightboxPhotos.length) {
+    photoState.currentLightboxIndex = photoState.lightboxPhotos.length - 1;
+  }
+  renderLightbox();
+}
+
+function showPhotoInfo(photoId) {
+  const photo = photoState.lightboxPhotos.find(p => p.id === photoId);
+  if (!photo) return;
+  openModal('Thông tin ảnh', `
+    <div class="info-grid">
+      <div class="info-item"><div class="label">Tên file</div><div class="value">${esc(photo.original_name||photo.filename)}</div></div>
+      <div class="info-item"><div class="label">Loại</div><div class="value">${photo.file_type === 'video' ? '🎬 Video' : '📷 Ảnh'}</div></div>
+      <div class="info-item"><div class="label">Kích thước</div><div class="value">${formatFileSize(photo.file_size||0)}</div></div>
+      <div class="info-item"><div class="label">Ngày</div><div class="value">${photo.date || 'N/A'}</div></div>
+      ${photo.width ? `<div class="info-item"><div class="label">Kích thước ảnh</div><div class="value">${photo.width} × ${photo.height}</div></div>` : ''}
+      ${photo.exif_date ? `<div class="info-item"><div class="label">EXIF Date</div><div class="value">${photo.exif_date}</div></div>` : ''}
+      ${photo.duration ? `<div class="info-item"><div class="label">Thời lượng</div><div class="value">${formatDuration(photo.duration)}</div></div>` : ''}
+    </div>
+    ${photo.tags?.length ? `<div style="margin-top:12px"><strong>Thẻ:</strong> ${photo.tags.map(t => `<span class="tag" style="background:${t.color};color:#fff">${t.name}</span>`).join(' ')}</div>` : ''}
+  `);
+}
+
+// ---- Share ----
+async function sharePhoto(photoId) {
+  const data = await api(`/kids/${state.selectedKid}/photos/${photoId}/share`);
+  if (!data) return;
+  showShareModal(data.shareUrl, data.caption || 'Ảnh từ Kid Journey', data.thumbnailUrl);
+}
+
+async function shareAlbum(albumId) {
+  const data = await api(`/kids/${state.selectedKid}/photos/albums/${albumId}/share`);
+  if (!data) return;
+  showShareModal(null, `${data.albumName} · ${data.photoCount} ảnh`, null, data.photos);
+}
+
+function showShareModal(url, title, thumbnail, photos) {
+  const shareText = title || 'Chia sẻ từ Kid Journey';
+  const encodedUrl = encodeURIComponent(url || '');
+  const encodedText = encodeURIComponent(shareText);
+
+  openModal('🔗 Chia sẻ', `
+    <div class="share-panel">
+      <p style="font-size:.9rem;margin-bottom:12px">${esc(shareText)}</p>
+      ${url ? `<div style="background:var(--bg);padding:10px;border-radius:8px;font-size:.78rem;word-break:break-all;margin-bottom:16px">${esc(url)}</div>` : ''}
+      <div class="share-options">
+        ${url ? `
+          <button class="share-btn" onclick="copyToClipboard('${esc(url)}')">
+            <span class="share-icon">📋</span>
+            <span class="share-label">Copy link</span>
+          </button>
+        ` : ''}
+        <button class="share-btn" onclick="shareViaZalo('${esc(url||'')}', '${esc(shareText)}')">
+          <span class="share-icon">💬</span>
+          <span class="share-label">Zalo</span>
+        </button>
+        <button class="share-btn" onclick="shareViaMessenger('${esc(url||'')}', '${esc(shareText)}')">
+          <span class="share-icon">📨</span>
+          <span class="share-label">Messenger</span>
+        </button>
+        <button class="share-btn" onclick="nativeShare('${esc(url||'')}', '${esc(shareText)}')">
+          <span class="share-icon">📱</span>
+          <span class="share-label">Khác</span>
+        </button>
+      </div>
+    </div>
+  `);
+}
+
+function copyToClipboard(text) {
+  navigator.clipboard.writeText(text).then(() => toast('📋 Đã copy!')).catch(() => toast('❌ Không copy được'));
+}
+
+function shareViaZalo(url, text) {
+  window.open(`https://zalo.me/share?url=${encodeURIComponent(url)}&text=${encodeURIComponent(text)}`, '_blank');
+}
+
+function shareViaMessenger(url, text) {
+  window.open(`https://www.facebook.com/share.php?u=${encodeURIComponent(url)}`, '_blank');
+}
+
+async function nativeShare(url, text) {
+  if (navigator.share) {
+    try {
+      await navigator.share({ title: text, url });
+    } catch (e) { /* user cancelled */ }
+  } else {
+    copyToClipboard(url);
+  }
+}
+
+// ---- Utility ----
+function formatFileSize(bytes) {
+  if (!bytes) return '0 B';
+  const k = 1024;
+  const sizes = ['B', 'KB', 'MB', 'GB'];
+  const i = Math.floor(Math.log(bytes) / Math.log(k));
+  return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i];
+}
+
+function formatDuration(seconds) {
+  if (!seconds) return '';
+  const m = Math.floor(seconds / 60);
+  const s = Math.floor(seconds % 60);
+  return `${m}:${s.toString().padStart(2, '0')}`;
+}
+
+function formatDateLabel(dateStr) {
+  if (!dateStr || dateStr === 'unknown') return 'Không rõ ngày';
+  const d = new Date(dateStr + 'T00:00:00');
+  const options = { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' };
+  return d.toLocaleDateString('vi-VN', options);
+}
+
+function relativeDate(dateStr) {
+  if (!dateStr) return '';
+  const d = new Date(dateStr + 'T00:00:00');
+  const now = new Date();
+  const diff = Math.floor((now - d) / (1000 * 60 * 60 * 24));
+  if (diff === 0) return 'Hôm nay';
+  if (diff === 1) return 'Hôm qua';
+  if (diff < 7) return `${diff} ngày trước`;
+  if (diff < 30) return `${Math.floor(diff/7)} tuần trước`;
+  if (diff < 365) return `${Math.floor(diff/30)} tháng trước`;
+  return `${Math.floor(diff/365)} năm trước`;
 }
 
 // ============ MONTESSORI ============

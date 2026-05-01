@@ -2,11 +2,14 @@
 FROM node:20-alpine AS builder
 WORKDIR /app
 COPY package*.json ./
-RUN npm ci --omit=dev && npm cache clean --force
+RUN apk add --no-cache vips-dev build-base && npm ci --omit=dev && npm cache clean --force
 
 # ---- Production stage ----
 FROM node:20-alpine
 LABEL maintainer="kid-journey"
+
+# Install runtime deps for sharp (libvips)
+RUN apk add --no-cache vips
 
 # Security: run as non-root
 RUN addgroup -S app && adduser -S app -G app
@@ -25,7 +28,7 @@ RUN mkdir -p data && node scripts/prepare-who-data.js "" data/who-lms-data.json
 COPY public/ ./public/
 
 # Create data dirs
-RUN mkdir -p data/uploads && chown -R app:app data
+RUN mkdir -p data/uploads data/uploads/thumbnails && chown -R app:app data
 
 USER app
 
