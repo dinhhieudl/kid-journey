@@ -37,4 +37,4 @@ EXPOSE 3107
 HEALTHCHECK --interval=30s --timeout=5s --retries=3 \
   CMD wget -q --spider http://localhost:3107/api/auth/status || exit 1
 
-CMD ["node", "src/server.js"]
+CMD ["sh", "-c", "node src/database/migrate.js && node src/server.js"]

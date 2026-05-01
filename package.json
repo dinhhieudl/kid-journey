@@ -4,8 +4,8 @@
   "description": "Kid Journey - Child development tracking with WHO growth standards and Montessori activities",
   "main": "src/server.js",
   "scripts": {
-    "start": "node src/server.js",
-    "dev": "node --watch src/server.js",
+    "start": "node src/database/migrate.js && node src/server.js",
+    "dev": "node src/database/migrate.js && node --watch src/server.js",
     "test": "jest --verbose",
     "migrate": "node src/database/migrate.js"
   },
