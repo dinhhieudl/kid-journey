@@ -2,8 +2,7 @@
 FROM node:20-alpine AS builder
 WORKDIR /app
 COPY package*.json ./
-RUN sed -i 's/dl-cdn.alpinelinux.org/mirrors.aliyun.com/g' /etc/apk/repositories && \
-    apk add --no-cache vips-dev build-base && npm install --omit=dev && npm cache clean --force
+RUN apk add --no-cache vips && npm install --omit=dev && npm cache clean --force
 
 # ---- Production stage ----
 FROM node:20-alpine
