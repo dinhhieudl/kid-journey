@@ -132,10 +132,8 @@
   background: linear-gradient(transparent, rgba(0,0,0,.6));
   color: #fff;
   font-size: .72rem;
-  opacity: 0;
-  transition: opacity .2s;
+  opacity: 1;
 }
-.masonry-item:hover .item-overlay { opacity: 1; }
 .masonry-item .item-overlay .caption { font-weight: 500; }
 .masonry-item .item-overlay .meta { font-size: .65rem; opacity: .8; margin-top: 2px; }
 

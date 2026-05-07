@@ -2,14 +2,16 @@
 FROM node:20-alpine AS builder
 WORKDIR /app
 COPY package*.json ./
-RUN apk add --no-cache vips-dev build-base && npm ci --omit=dev && npm cache clean --force
+RUN sed -i 's/dl-cdn.alpinelinux.org/mirrors.aliyun.com/g' /etc/apk/repositories && \
+    apk add --no-cache vips-dev build-base && npm install --omit=dev && npm cache clean --force
 
 # ---- Production stage ----
 FROM node:20-alpine
 LABEL maintainer="kid-journey"
 
 # Install runtime deps for sharp (libvips)
-RUN apk add --no-cache vips
+RUN sed -i 's/dl-cdn.alpinelinux.org/mirrors.aliyun.com/g' /etc/apk/repositories && \
+    apk add --no-cache vips
 
 # Security: run as non-root
 RUN addgroup -S app && adduser -S app -G app

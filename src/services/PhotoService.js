@@ -4,6 +4,7 @@
  * @module services/PhotoService
  */
 const sharp = require('sharp');
+const exifReader = require('exif-reader');
 const path = require('path');
 const fs = require('fs');
 const config = require('../config');
@@ -13,28 +14,46 @@ const THUMBNAIL_MAX_HEIGHT = 400;
 const THUMBNAIL_QUALITY = 80;
 
 /**
- * Extract EXIF date from image buffer
- * Returns ISO date string (YYYY-MM-DD) or null
+ * Extract EXIF data from image buffer
+ * Returns object with exifDate (YYYY-MM-DD HH:mm) and cameraModel
  * @param {Buffer} buffer
- * @returns {Promise<string|null>}
+ * @returns {Promise<{exifDate: string|null, cameraModel: string|null}>}
  */
-async function extractExifDate(buffer) {
+async function extractExifData(buffer) {
   try {
     const metadata = await sharp(buffer).metadata();
-    // sharp exposes exif as a Buffer; look for DateTimeOriginal
     if (metadata.exif) {
-      const exifStr = metadata.exif.toString('latin1');
-      // Search for DateTimeOriginal (tag 0x9003) or DateTime (tag 0x0132)
-      const dateMatch = exifStr.match(/(\d{4}):(\d{2}):(\d{2})\s+(\d{2}):(\d{2}):(\d{2})/);
-      if (dateMatch) {
-        const [, year, month, day] = dateMatch;
-        return `${year}-${month}-${day}`;
+      const exif = exifReader(metadata.exif);
+      let date = null;
+      let model = null;
+
+      if (exif.Photo && exif.Photo.DateTimeOriginal) {
+        const d = new Date(exif.Photo.DateTimeOriginal);
+        if (!isNaN(d.getTime())) {
+          date = d.getFullYear() + '-' + 
+                 String(d.getMonth() + 1).padStart(2, '0') + '-' + 
+                 String(d.getDate()).padStart(2, '0') + ' ' + 
+                 String(d.getHours()).padStart(2, '0') + ':' + 
+                 String(d.getMinutes()).padStart(2, '0');
+        }
       }
+
+      if (exif.Image) {
+        const make = exif.Image.Make ? exif.Image.Make.replace(/\0/g, '').trim() : '';
+        const mod = exif.Image.Model ? exif.Image.Model.replace(/\0/g, '').trim() : '';
+        if (make && mod) {
+          model = mod.toLowerCase().startsWith(make.toLowerCase()) ? mod : `${make} ${mod}`;
+        } else {
+          model = make || mod || null;
+        }
+      }
+
+      return { exifDate: date, cameraModel: model };
     }
   } catch (e) {
     // Not a valid image or no EXIF — that's fine
   }
-  return null;
+  return { exifDate: null, cameraModel: null };
 }
 
 /**
@@ -45,7 +64,11 @@ async function extractExifDate(buffer) {
 async function getImageDimensions(buffer) {
   try {
     const metadata = await sharp(buffer).metadata();
-    return { width: metadata.width, height: metadata.height };
+    const isRotated = [5, 6, 7, 8].includes(metadata.orientation);
+    return { 
+      width: isRotated ? metadata.height : metadata.width, 
+      height: isRotated ? metadata.width : metadata.height 
+    };
   } catch (e) {
     return null;
   }
@@ -72,6 +95,7 @@ async function generateThumbnail(sourceFilename, buffer) {
     const thumbPath = path.join(config.UPLOADS_DIR, thumbFilename);
 
     await sharp(buffer)
+      .rotate()
       .resize(THUMBNAIL_MAX_WIDTH, THUMBNAIL_MAX_HEIGHT, {
         fit: 'inside',
         withoutEnlargement: true,
@@ -108,8 +132,10 @@ async function processUpload(file) {
   };
 
   if (!isVideo) {
-    // Extract EXIF date
-    result.exifDate = await extractExifDate(buffer);
+    // Extract EXIF data
+    const exifData = await extractExifData(buffer);
+    result.exifDate = exifData.exifDate;
+    result.cameraModel = exifData.cameraModel;
 
     // Get dimensions
     const dims = await getImageDimensions(buffer);
@@ -167,7 +193,7 @@ function getMimeType(filename) {
 module.exports = {
   processUpload,
   generateThumbnail,
-  extractExifDate,
+  extractExifData,
   getImageDimensions,
   deleteFiles,
   getMimeType,

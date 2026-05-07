@@ -1152,7 +1152,7 @@ function renderMasonryItem(photo, index) {
       `}
       <div class="item-overlay">
         ${photo.caption ? `<div class="caption">${esc(photo.caption)}</div>` : ''}
-        <div class="meta">${photo.original_name || ''} ${photo.file_size ? '· '+formatFileSize(photo.file_size) : ''}</div>
+        <div class="meta">${photo.exif_date || photo.date || ''} ${photo.camera_model ? '· '+esc(photo.camera_model) : ''} ${photo.file_size ? '· '+formatFileSize(photo.file_size) : ''}</div>
       </div>
     </div>
   `;
@@ -1659,7 +1659,11 @@ function openLightbox(photoId) {
 
 function closeLightbox() {
   const lb = document.getElementById('lightbox');
-  if (lb) lb.classList.remove('show');
+  if (lb) {
+    lb.classList.remove('show');
+    const video = lb.querySelector('video');
+    if (video) video.pause();
+  }
   document.body.style.overflow = '';
   photoState.currentLightboxIndex = -1;
 }
@@ -1698,7 +1702,7 @@ function renderLightbox() {
     </div>
     <div class="lightbox-footer">
       ${photo.caption ? `<div class="lb-caption">${esc(photo.caption)}</div>` : ''}
-      <div class="lb-date">${photo.date || ''} · ${photo.original_name || ''} ${photo.file_size ? '· '+formatFileSize(photo.file_size) : ''}</div>
+      <div class="lb-date">${photo.exif_date || photo.date || ''} ${photo.camera_model ? '· '+esc(photo.camera_model) : ''} ${photo.file_size ? '· '+formatFileSize(photo.file_size) : ''}</div>
     </div>
     <div class="lightbox-thumbs">
       ${photos.slice(Math.max(0, index - 10), Math.min(photos.length, index + 11)).map((p, i) => {
@@ -1731,15 +1735,16 @@ function goToLightboxIndex(index) {
 
 function setupLightboxGestures() {
   const body = document.getElementById('lightboxBody');
-  if (!body) return;
+  if (!body || body.dataset.gesturesSetup) return;
+  body.dataset.gesturesSetup = 'true';
 
   let startX = 0, startY = 0, isDragging = false;
   let pinchStartDist = 0, currentScale = 1;
-  const img = document.getElementById('lightboxImg');
 
   // Touch swipe
   body.addEventListener('touchstart', (e) => {
-    if (e.touches.length === 2 && img) {
+    const media = document.getElementById('lightboxImg') || document.querySelector('.lb-video');
+    if (e.touches.length === 2 && media) {
       // Pinch start
       pinchStartDist = Math.hypot(
         e.touches[0].clientX - e.touches[1].clientX,
@@ -1753,22 +1758,33 @@ function setupLightboxGestures() {
   }, { passive: true });
 
   body.addEventListener('touchmove', (e) => {
-    if (e.touches.length === 2 && img && pinchStartDist) {
+    const media = document.getElementById('lightboxImg') || document.querySelector('.lb-video');
+    if (e.touches.length === 2 && media && pinchStartDist) {
       // Pinch zoom
       const dist = Math.hypot(
         e.touches[0].clientX - e.touches[1].clientX,
         e.touches[0].clientY - e.touches[1].clientY
       );
       currentScale = Math.max(0.5, Math.min(5, dist / pinchStartDist));
-      img.style.transform = `scale(${currentScale})`;
+      media.style.transform = `scale(${currentScale})`;
+    } else if (e.touches.length === 1 && isDragging) {
+      const dy = e.touches[0].clientY - startY;
+      const dx = e.touches[0].clientX - startX;
+      // Dragging vertically (pull to dismiss effect)
+      if (Math.abs(dy) > Math.abs(dx) && Math.abs(dy) > 10) {
+        if (media) media.style.transform = `translateY(${dy}px) scale(${Math.max(0.8, 1 - Math.abs(dy)/1000)})`;
+        const opacity = Math.max(0.3, 0.95 - Math.abs(dy)/400);
+        document.getElementById('lightbox').style.backgroundColor = `rgba(0,0,0,${opacity})`;
+      }
     }
   }, { passive: true });
 
   body.addEventListener('touchend', (e) => {
+    const media = document.getElementById('lightboxImg') || document.querySelector('.lb-video');
     if (pinchStartDist && currentScale !== 1) {
       // Reset pinch
       if (currentScale < 1.1 && currentScale > 0.9) {
-        img.style.transform = 'scale(1)';
+        if (media) media.style.transform = '';
         currentScale = 1;
       }
       pinchStartDist = 0;
@@ -1781,10 +1797,21 @@ function setupLightboxGestures() {
     const dx = (e.changedTouches[0]?.clientX || 0) - startX;
     const dy = (e.changedTouches[0]?.clientY || 0) - startY;
 
-    if (Math.abs(dx) > 50 && Math.abs(dx) > Math.abs(dy)) {
+    if (Math.abs(dy) > 100 && Math.abs(dy) > Math.abs(dx)) {
+      closeLightbox();
+    } else if (Math.abs(dx) > 50 && Math.abs(dx) > Math.abs(dy)) {
       if (dx > 0) lightboxNav(-1);
       else lightboxNav(1);
     }
+    
+    // Reset styles
+    if (media) {
+      media.style.transform = '';
+      media.style.transition = 'transform 0.3s ease';
+      setTimeout(() => { if (media) media.style.transition = ''; }, 300);
+    }
+    const lb = document.getElementById('lightbox');
+    if (lb) lb.style.backgroundColor = '';
   }, { passive: true });
 
   // Keyboard nav
@@ -1825,12 +1852,11 @@ function showPhotoInfo(photoId) {
   if (!photo) return;
   openModal('Thông tin ảnh', `
     <div class="info-grid">
-      <div class="info-item"><div class="label">Tên file</div><div class="value">${esc(photo.original_name||photo.filename)}</div></div>
       <div class="info-item"><div class="label">Loại</div><div class="value">${photo.file_type === 'video' ? '🎬 Video' : '📷 Ảnh'}</div></div>
-      <div class="info-item"><div class="label">Kích thước</div><div class="value">${formatFileSize(photo.file_size||0)}</div></div>
-      <div class="info-item"><div class="label">Ngày</div><div class="value">${photo.date || 'N/A'}</div></div>
+      <div class="info-item"><div class="label">Ngày giờ chụp</div><div class="value">${photo.exif_date || photo.date || 'N/A'}</div></div>
+      ${photo.camera_model ? `<div class="info-item"><div class="label">Máy chụp</div><div class="value">${esc(photo.camera_model)}</div></div>` : ''}
+      <div class="info-item"><div class="label">Dung lượng</div><div class="value">${formatFileSize(photo.file_size||0)}</div></div>
       ${photo.width ? `<div class="info-item"><div class="label">Kích thước ảnh</div><div class="value">${photo.width} × ${photo.height}</div></div>` : ''}
-      ${photo.exif_date ? `<div class="info-item"><div class="label">EXIF Date</div><div class="value">${photo.exif_date}</div></div>` : ''}
       ${photo.duration ? `<div class="info-item"><div class="label">Thời lượng</div><div class="value">${formatDuration(photo.duration)}</div></div>` : ''}
     </div>
     ${photo.tags?.length ? `<div style="margin-top:12px"><strong>Thẻ:</strong> ${photo.tags.map(t => `<span class="tag" style="background:${t.color};color:#fff">${t.name}</span>`).join(' ')}</div>` : ''}

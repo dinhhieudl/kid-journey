@@ -56,11 +56,11 @@ function findById(id) {
  * @param {object} params
  * @returns {object} { lastInsertRowid }
  */
-function create({ kid_id, filename, original_name, caption, date, category, thumbnail_path, file_type, file_size, exif_date, width, height, duration }) {
+function create({ kid_id, filename, original_name, caption, date, category, thumbnail_path, file_type, file_size, exif_date, camera_model, width, height, duration }) {
   return getDb().prepare(`
-    INSERT INTO photos (kid_id, filename, original_name, caption, date, category, thumbnail_path, file_type, file_size, exif_date, width, height, duration)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-  `).run(kid_id, filename, original_name, caption, date, category, thumbnail_path || null, file_type || 'image', file_size || 0, exif_date || null, width || null, height || null, duration || null);
+    INSERT INTO photos (kid_id, filename, original_name, caption, date, category, thumbnail_path, file_type, file_size, exif_date, camera_model, width, height, duration)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `).run(kid_id, filename, original_name, caption, date, category, thumbnail_path || null, file_type || 'image', file_size || 0, exif_date || null, camera_model || null, width || null, height || null, duration || null);
 }
 
 /**

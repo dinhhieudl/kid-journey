@@ -1,6 +1,7 @@
 services:
   kid-journey:
-    build: .
+    build:
+      context: .
     container_name: kid-journey
     restart: unless-stopped
     ports:

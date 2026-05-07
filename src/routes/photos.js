@@ -84,6 +84,7 @@ router.post('/', authorizeKid, upload.array('photo', 50), asyncHandler(async (re
       file_type: processed.fileType,
       file_size: processed.fileSize,
       exif_date: processed.exifDate,
+      camera_model: processed.cameraModel,
       width: processed.width,
       height: processed.height,
       duration: processed.duration,
