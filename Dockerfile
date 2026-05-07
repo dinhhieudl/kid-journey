@@ -9,8 +9,7 @@ FROM node:20-alpine
 LABEL maintainer="kid-journey"
 
 # Install runtime deps for sharp (libvips)
-RUN sed -i 's/dl-cdn.alpinelinux.org/mirrors.aliyun.com/g' /etc/apk/repositories && \
-    apk add --no-cache vips
+RUN apk add --no-cache vips
 
 # Security: run as non-root
 RUN addgroup -S app && adduser -S app -G app
